@@ -7,8 +7,9 @@ from pathlib import Path
 import os
 from .utils import load_env_file, get_database_config
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# Load project-level .env (if present)
 load_env_file(BASE_DIR, ".env")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "your-default-secret-key")
@@ -30,6 +31,10 @@ INSTALLED_APPS = [
 
     #third party apps
     'rest_framework',
+    'django_celery_beat',       # Celery Beat scheduler stored in DB
+    'django_celery_results',    # optional: store task results in Django DB
+    'django_redis',
+    
 ]
 
 MIDDLEWARE = [
@@ -100,3 +105,40 @@ USE_TZ = True
 
 
 STATIC_URL = 'static/'
+
+# ---------------------------
+# Redis / Cache configuration
+# ---------------------------
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/1")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("DJANGO_CACHE_LOCATION", REDIS_URL),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
+
+# ---------------------------
+# Celery configuration
+# ---------------------------
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
+
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+
+# Use django-celery-beat database scheduler if installed
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers.DatabaseScheduler"
+
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "visibility_timeout": int(os.getenv("CELERY_VISIBILITY_TIMEOUT", 3600)),
+}
+
+# In development/tests run tasks eagerly if DEBUG is True
+CELERY_TASK_ALWAYS_EAGER = DEBUG
+CELERY_TASK_EAGER_PROPAGATES = True
