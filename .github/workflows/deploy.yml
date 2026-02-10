@@ -72,10 +72,19 @@ jobs:
 
           ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
 
-      - name: 🛠️ Install rsync and ssh client (for act runner)
+      - name: 🛠️ Install rsync and ssh client
         run: |
-          apt-get update
-          apt-get install -y rsync openssh-client ca-certificates || true
+          if command -v apt-get >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1; then
+              sudo apt-get update || true
+              sudo apt-get install -y rsync openssh-client ca-certificates || true
+            else
+              apt-get update || true
+              apt-get install -y rsync openssh-client ca-certificates || true
+            fi
+          else
+            echo "apt-get not available in this runner; skipping package install"
+          fi
 
       - name: 📤 Sync source code to server
         run: |
