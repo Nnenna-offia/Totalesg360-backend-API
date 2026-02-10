@@ -3,11 +3,8 @@ version: '3.8'
 services:
   web:
     build: .
-    container_name: total360_web
     restart: unless-stopped
     env_file: .env
-    environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.production
     volumes:
       - static_volume:/app/static
       - media_volume:/app/media
@@ -17,7 +14,6 @@ services:
 
   worker:
     build: .
-    container_name: total360_worker
     restart: unless-stopped
     env_file: .env
     command: celery -A config worker --loglevel=info
@@ -27,7 +23,6 @@ services:
 
   beat:
     build: .
-    container_name: total360_beat
     restart: unless-stopped
     env_file: .env
     command: celery -A config beat --loglevel=info
@@ -37,17 +32,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: total360_redis
     restart: unless-stopped
 
   db:
     image: postgres:15-alpine
-    container_name: total360_db
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: total360
-      POSTGRES_USER: total360
-      POSTGRES_PASSWORD: changeme
+    env_file: .env
     volumes:
       - db_data:/var/lib/postgresql/data
 

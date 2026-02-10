@@ -96,36 +96,37 @@ jobs:
             set -e
             cd $DEPLOY_PATH
 
-            # Pass COMPOSE_FILES value into the remote shell
+            # Pass COMPOSE_FILES and APP_NAME values into the remote shell
             COMPOSE_FILES='$COMPOSE_FILES'
+            APP_NAME='$APP_NAME'
 
-            # Build & start services for chosen environment
+            # Build & start services for chosen environment (project-scoped)
             DOCKER_COMPOSE_FILES=""
             for f in ${COMPOSE_FILES//:/ }; do
               DOCKER_COMPOSE_FILES+=" -f $f"
             done
 
-            docker compose $DOCKER_COMPOSE_FILES pull || true
-            docker compose $DOCKER_COMPOSE_FILES up -d --build
+            docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES pull || true
+            docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES up -d --build
 
             # Wait a short while for containers to register
             sleep 5
 
             # Run migrations and collectstatic on web service (assumes service named `web`)
-            if docker compose $DOCKER_COMPOSE_FILES ps -q web >/dev/null 2>&1; then
-              docker compose $DOCKER_COMPOSE_FILES exec -T web python manage.py migrate --noinput || true
-              docker compose $DOCKER_COMPOSE_FILES exec -T web python manage.py collectstatic --noinput || true
+            if docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES ps -q web >/dev/null 2>&1; then
+              docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES exec -T web python manage.py migrate --noinput || true
+              docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES exec -T web python manage.py collectstatic --noinput || true
             fi
 
             # Restart celery worker and beat if present (common service names: worker, celery, beat)
             for svc in worker celery celery_worker beat celery-beat; do
-              if docker compose $DOCKER_COMPOSE_FILES ps -q $svc >/dev/null 2>&1; then
-                docker compose $DOCKER_COMPOSE_FILES restart $svc || true
+              if docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES ps -q $svc >/dev/null 2>&1; then
+                docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES restart $svc || true
               fi
             done
 
             # Optionally show last few logs for quick feedback
-            docker compose $DOCKER_COMPOSE_FILES logs --tail=100 --no-color || true
+            docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES logs --tail=100 --no-color || true
           EOF
 
       - name: ✅ Deployment finished

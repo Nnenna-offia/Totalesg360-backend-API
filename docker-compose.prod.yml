@@ -7,6 +7,16 @@ services:
     environment:
       - DEBUG=0
 
+  db:
+    image: postgres:15-alpine
+    ports:
+      - '5432:5432'
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
   # In production you might run an external reverse proxy (nginx) or add an nginx
   # service here to proxy to `web`. This file can be extended with production-only
   # settings such as resource limits, secrets, and logging options.
