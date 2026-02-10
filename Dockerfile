@@ -12,7 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN useradd --create-home appuser || true
+RUN mkdir -p /app/logs /app/static /app/media \
+    && useradd --create-home appuser || true \
+    && chown -R appuser:appuser /app/logs /app/static /app/media /app
 USER appuser
 
 EXPOSE 8000
