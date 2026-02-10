@@ -10,3 +10,6 @@ __pycache__/
 .idea/
 .vscode/
 .env
+src_images/
+/.postman/
+/postman/

@@ -2,6 +2,11 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+from pathlib import Path
+
+# Ensure repo `src/` is on the import path so apps created under `src/` are importable
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR / "src"))
 
 
 def main():
