@@ -19,10 +19,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      SERVER_IP: ${{ secrets.SERVER_IP }}
-      SSH_KEY: ${{ secrets.SSH_KEY }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
 
     steps:
       - name: 📥 Checkout branch
@@ -52,41 +48,17 @@ jobs:
             echo "DEPLOY_USER=${{ secrets.DEPLOY_USER }}" >> $GITHUB_ENV
           fi
 
-      - name: ⚙️ Configure SSH
+      - name: ⚙️ Set deployment configuration
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Support either a base64-encoded key (SSH_KEY_B64) or an escaped-key (SSH_KEY)
-          if [ -n "$SSH_KEY_B64" ]; then
-            # decode base64 (works with both GNU and BSD base64)
-            if command -v base64 >/dev/null 2>&1; then
-              echo "$SSH_KEY_B64" | (base64 --decode || base64 -D) > ~/.ssh/id_rsa
-            else
-              echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
-            fi
-          else
-            printf '%b' "$SSH_KEY" > ~/.ssh/id_rsa
-          fi
+          # Write private key directly from GitHub secret (same approach as frontend workflow)
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-          # Ensure host key is known to avoid first-time prompts
-          ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
-
-          # Validate private key can be parsed by ssh-keygen/libcrypto.
-          # If parsing fails (libcrypto error), attempt to convert to PEM format
-          # which is widely accepted by OpenSSH/libcrypto implementations.
-          if ! ssh-keygen -y -f ~/.ssh/id_rsa >/dev/null 2>&1; then
-            echo "Private key not parseable; attempting PEM conversion"
-            if command -v ssh-keygen >/dev/null 2>&1; then
-              # -P "" supplies an empty current passphrase, -N "" sets an empty new passphrase
-              ssh-keygen -p -m PEM -f ~/.ssh/id_rsa -P "" -N "" || true
-            fi
-          fi
-
-          # Debug: print first/last lines of the key (safe) to help diagnose formatting issues
-          head -n 1 ~/.ssh/id_rsa || true
-          tail -n 1 ~/.ssh/id_rsa || true
+          # Add server to known hosts to avoid interactive prompt
+          ssh-keyscan -H "${{ secrets.SERVER_IP }}" >> ~/.ssh/known_hosts
 
       - name: 🛠️ Install rsync and ssh client
         run: |
@@ -109,49 +81,15 @@ jobs:
             --exclude ".github" \
             --exclude "venv" \
             --exclude "node_modules" \
-            ./ $DEPLOY_USER@$SERVER_IP:$DEPLOY_PATH
+            ./ ${DEPLOY_USER}@${{ secrets.SERVER_IP }}:${{ env.DEPLOY_PATH }}
 
-      - name: 🚀 Remote deploy (docker compose, migrate, collectstatic, restart workers)
-        env:
-          COMPOSE_FILES: ${{ env.COMPOSE_FILES }}
+      - name: 🚀 Deploy application on server
         run: |
-          set -e
-
-          ssh $DEPLOY_USER@$SERVER_IP << 'EOF'
+          ssh ${DEPLOY_USER}@${{ secrets.SERVER_IP }} << 'EOF'
             set -e
-            cd $DEPLOY_PATH
-
-            # Pass COMPOSE_FILES and APP_NAME values into the remote shell
-            COMPOSE_FILES='$COMPOSE_FILES'
-            APP_NAME='$APP_NAME'
-
-            # Build & start services for chosen environment (project-scoped)
-            DOCKER_COMPOSE_FILES=""
-            for f in ${COMPOSE_FILES//:/ }; do
-              DOCKER_COMPOSE_FILES+=" -f $f"
-            done
-
-            docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES pull || true
-            docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES up -d --build
-
-            # Wait a short while for containers to register
-            sleep 5
-
-            # Run migrations and collectstatic on web service (assumes service named `web`)
-            if docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES ps -q web >/dev/null 2>&1; then
-              docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES exec -T web python manage.py migrate --noinput || true
-              docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES exec -T web python manage.py collectstatic --noinput || true
-            fi
-
-            # Restart celery worker and beat if present (common service names: worker, celery, beat)
-            for svc in worker celery celery_worker beat celery-beat; do
-              if docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES ps -q $svc >/dev/null 2>&1; then
-                docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES restart $svc || true
-              fi
-            done
-
-            # Optionally show last few logs for quick feedback
-            docker compose -p "$APP_NAME" $DOCKER_COMPOSE_FILES logs --tail=100 --no-color || true
+            cd ${{ env.DEPLOY_PATH }}
+            export ENVIRONMENT=${{ env.ENVIRONMENT }}
+            docker compose -f docker-compose.yml -f docker-compose.${{ env.ENVIRONMENT }}.yml up -d --build
           EOF
 
       - name: ✅ Deployment finished
