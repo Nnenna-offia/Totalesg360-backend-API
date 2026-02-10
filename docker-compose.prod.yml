@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  web:
+    ports:
+      - '8000:8000'
+    environment:
+      - DEBUG=0
+
+  # In production you might run an external reverse proxy (nginx) or add an nginx
+  # service here to proxy to `web`. This file can be extended with production-only
+  # settings such as resource limits, secrets, and logging options.

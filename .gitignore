@@ -13,3 +13,7 @@ __pycache__/
 src_images/
 /.postman/
 /postman/
+./logs/
+.secrets*
+event.json
+write_secret.sh

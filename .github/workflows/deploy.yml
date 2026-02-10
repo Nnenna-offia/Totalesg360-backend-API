@@ -1,0 +1,133 @@
+name: Deploy Total360 Backend to VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        type: string
+        default: 'main'
+      environment:
+        description: 'Deployment environment (dev or prod)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SERVER_IP: ${{ secrets.SERVER_IP }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+
+    steps:
+      - name: 📥 Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
+
+      - name: 🎯 Set deployment config
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
+
+          if [ "$ENV" = "prod" ]; then
+            echo "DEPLOY_PATH=/var/www/total360-backend" >> $GITHUB_ENV
+            echo "APP_NAME=total360-backend" >> $GITHUB_ENV
+            echo "COMPOSE_FILES=docker-compose.yml:docker-compose.prod.yml" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_PATH=/var/www/total360-backend-dev" >> $GITHUB_ENV
+            echo "APP_NAME=total360-backend-dev" >> $GITHUB_ENV
+            echo "COMPOSE_FILES=docker-compose.yml:docker-compose.dev.yml" >> $GITHUB_ENV
+          fi
+          # Set deploy user from secret or default to root
+          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then
+            echo "DEPLOY_USER=root" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_USER=${{ secrets.DEPLOY_USER }}" >> $GITHUB_ENV
+          fi
+
+      - name: ⚙️ Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Support either a base64-encoded key (SSH_KEY_B64) or an escaped-key (SSH_KEY)
+          if [ -n "$SSH_KEY_B64" ]; then
+            # decode base64 (works with both GNU and BSD base64)
+            if command -v base64 >/dev/null 2>&1; then
+              echo "$SSH_KEY_B64" | (base64 --decode || base64 -D) > ~/.ssh/id_rsa
+            else
+              echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
+            fi
+          else
+            printf '%b' "$SSH_KEY" > ~/.ssh/id_rsa
+          fi
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
+
+      - name: 🛠️ Install rsync and ssh client (for act runner)
+        run: |
+          apt-get update
+          apt-get install -y rsync openssh-client ca-certificates || true
+
+      - name: 📤 Sync source code to server
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "venv" \
+            --exclude "node_modules" \
+            ./ $DEPLOY_USER@$SERVER_IP:$DEPLOY_PATH
+
+      - name: 🚀 Remote deploy (docker compose, migrate, collectstatic, restart workers)
+        env:
+          COMPOSE_FILES: ${{ env.COMPOSE_FILES }}
+        run: |
+          set -e
+
+          ssh $DEPLOY_USER@$SERVER_IP << 'EOF'
+            set -e
+            cd $DEPLOY_PATH
+
+            # Pass COMPOSE_FILES value into the remote shell
+            COMPOSE_FILES='$COMPOSE_FILES'
+
+            # Build & start services for chosen environment
+            DOCKER_COMPOSE_FILES=""
+            for f in ${COMPOSE_FILES//:/ }; do
+              DOCKER_COMPOSE_FILES+=" -f $f"
+            done
+
+            docker compose $DOCKER_COMPOSE_FILES pull || true
+            docker compose $DOCKER_COMPOSE_FILES up -d --build
+
+            # Wait a short while for containers to register
+            sleep 5
+
+            # Run migrations and collectstatic on web service (assumes service named `web`)
+            if docker compose $DOCKER_COMPOSE_FILES ps -q web >/dev/null 2>&1; then
+              docker compose $DOCKER_COMPOSE_FILES exec -T web python manage.py migrate --noinput || true
+              docker compose $DOCKER_COMPOSE_FILES exec -T web python manage.py collectstatic --noinput || true
+            fi
+
+            # Restart celery worker and beat if present (common service names: worker, celery, beat)
+            for svc in worker celery celery_worker beat celery-beat; do
+              if docker compose $DOCKER_COMPOSE_FILES ps -q $svc >/dev/null 2>&1; then
+                docker compose $DOCKER_COMPOSE_FILES restart $svc || true
+              fi
+            done
+
+            # Optionally show last few logs for quick feedback
+            docker compose $DOCKER_COMPOSE_FILES logs --tail=100 --no-color || true
+          EOF
+
+      - name: ✅ Deployment finished
+        run: |
+          echo "Deployment to ${{ github.event.inputs.environment }} (branch: ${{ github.event.inputs.branch }}) completed."
