@@ -80,7 +80,8 @@ jobs:
             --exclude ".git" \
             --exclude ".github" \
             --exclude "venv" \
-            --exclude "node_modules" \
+            --exclude ".env" \
+            --exclude ".env.*" \
             ./ ${DEPLOY_USER}@${{ secrets.SERVER_IP }}:${{ env.DEPLOY_PATH }}
 
       - name: 🚀 Deploy application on server
