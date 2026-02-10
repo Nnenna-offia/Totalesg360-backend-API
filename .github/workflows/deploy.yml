@@ -70,7 +70,23 @@ jobs:
           fi
           chmod 600 ~/.ssh/id_rsa
 
+          # Ensure host key is known to avoid first-time prompts
           ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
+
+          # Validate private key can be parsed by ssh-keygen/libcrypto.
+          # If parsing fails (libcrypto error), attempt to convert to PEM format
+          # which is widely accepted by OpenSSH/libcrypto implementations.
+          if ! ssh-keygen -y -f ~/.ssh/id_rsa >/dev/null 2>&1; then
+            echo "Private key not parseable; attempting PEM conversion"
+            if command -v ssh-keygen >/dev/null 2>&1; then
+              # -P "" supplies an empty current passphrase, -N "" sets an empty new passphrase
+              ssh-keygen -p -m PEM -f ~/.ssh/id_rsa -P "" -N "" || true
+            fi
+          fi
+
+          # Debug: print first/last lines of the key (safe) to help diagnose formatting issues
+          head -n 1 ~/.ssh/id_rsa || true
+          tail -n 1 ~/.ssh/id_rsa || true
 
       - name: 🛠️ Install rsync and ssh client
         run: |
