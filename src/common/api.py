@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status as drf_status
 
 
+
 def success_response(data: Any = None, meta: Optional[Dict] = None, status: int = drf_status.HTTP_200_OK) -> Response:
     """Return a standardized success response.
 

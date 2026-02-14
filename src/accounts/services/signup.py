@@ -7,12 +7,15 @@ from django.utils import timezone
 
 from common.exceptions import BadRequest, Conflict
 from common.logging import get_service_logger
+from accounts.utils.otp import create_and_send_otp_for_user
+from accounts.selectors.user import user_exists_by_email
 from organizations.models import (
     Organization,
     Membership,
     RegulatoryFramework,
     OrganizationFramework,
 )
+from organizations.selectors.metadata import organization_exists_by_name
 from roles.models import Role
 
 User = get_user_model()
@@ -100,7 +103,18 @@ def signup(
             primary_reporting_focus=primary_reporting_focus,
             assigned_by=None,  # System assignment
         )
-    
+    # Create and send OTP for email verification (outside inner functions)
+    otp_sent = False
+    try:
+        ev, otp_sent = create_and_send_otp_for_user(user, is_resend=False)
+        if otp_sent:
+            logger.info("OTP enqueued/sent", extra={"user_id": str(user.id), "email": user.email})
+        else:
+            logger.warning("OTP not sent/enqueued", extra={"user_id": str(user.id), "email": user.email})
+    except Exception:
+        # Do not fail signup if async send fails; user can request resend via API
+        otp_sent = False
+        logger.exception("Failed to create/send OTP email")
     logger.info(
         "Signup completed successfully",
         extra={
@@ -117,6 +131,8 @@ def signup(
         "organization_name": organization.name,
         "sector": organization.sector,
         "primary_reporting_focus": organization.primary_reporting_focus,
+        "verification_required": True,
+        "otp_sent": bool(otp_sent),
     }
 
 
@@ -130,12 +146,12 @@ def _validate_signup_data(
         Conflict: Email or organization already exists
     """
     # Check email uniqueness
-    if User.objects.filter(email=email).exists():
+    if user_exists_by_email(email):
         logger.warning("Signup failed - email already exists", extra={"email": email})
         raise Conflict(detail=f"Email {email} is already registered")
     
     # Check organization name uniqueness
-    if Organization.objects.filter(name=organization_name).exists():
+    if organization_exists_by_name(organization_name):
         logger.warning(
             "Signup failed - organization name already exists",
             extra={"organization_name": organization_name},
@@ -164,7 +180,7 @@ def _create_user(*, email: str, password: str, first_name: str, last_name: str) 
         password=password,
         first_name=first_name,
         last_name=last_name,
-        is_active=True,
+        is_active=False,
     )
     logger.info("User created", extra={"user_id": str(user.id), "email": email})
     return user

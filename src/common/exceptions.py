@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 
 
 class DomainException(Exception):
@@ -38,52 +39,52 @@ class DomainException(Exception):
 class OrganizationAlreadyExists(DomainException):
     status_code = 409
     title = "Organization already exists"
-    type = "https://api.totalesg360.com/problems/org-already-exists"
+    type = f"{settings.PROBLEM_BASE_URL}/org-already-exists"
 
 
 class BadRequest(DomainException):
     status_code = 400
     title = "Bad request"
-    type = "https://api.totalesg360.com/problems/bad-request"
+    type = f"{settings.PROBLEM_BASE_URL}/bad-request"
 
 
 class InternalServerError(DomainException):
     status_code = 500
     title = "Internal server error"
-    type = "https://api.totalesg360.com/problems/internal-server-error"
+    type = f"{settings.PROBLEM_BASE_URL}/internal-server-error"
 
 
 class Unauthorized(DomainException):
     status_code = 401
     title = "Unauthorized"
-    type = "https://api.totalesg360.com/problems/unauthorized"
+    type = f"{settings.PROBLEM_BASE_URL}/unauthorized"
 
 
 class Forbidden(DomainException):
     status_code = 403
     title = "Forbidden"
-    type = "https://api.totalesg360.com/problems/forbidden"
+    type = f"{settings.PROBLEM_BASE_URL}/forbidden"
 
 
 class NotFound(DomainException):
     status_code = 404
     title = "Not found"
-    type = "https://api.totalesg360.com/problems/not-found"
+    type = f"{settings.PROBLEM_BASE_URL}/not-found"
 
 
 class UnprocessableEntity(DomainException):
     status_code = 422
     title = "Unprocessable entity"
-    type = "https://api.totalesg360.com/problems/unprocessable-entity"
+    type = f"{settings.PROBLEM_BASE_URL}/unprocessable-entity"
 
 
 class Conflict(DomainException):
     status_code = 409
     title = "Conflict"
-    type = "https://api.totalesg360.com/problems/conflict"
+    type = f"{settings.PROBLEM_BASE_URL}/conflict"
 
 
 class ServiceUnavailable(DomainException):
     status_code = 503
     title = "Service unavailable"
-    type = "https://api.totalesg360.com/problems/service-unavailable"
+    type = f"{settings.PROBLEM_BASE_URL}/service-unavailable"

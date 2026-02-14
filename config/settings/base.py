@@ -160,6 +160,24 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "visibility_timeout": int(os.getenv("CELERY_VISIBILITY_TIMEOUT", 3600)),
 }
 
+# Email configuration (from environment)
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() in ("1", "true", "yes")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
+
+# OTP defaults
+OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", 3600))
+OTP_LENGTH = int(os.getenv("OTP_LENGTH", 6))
+OTP_MAX_REQUESTS_PER_HOUR = int(os.getenv("OTP_MAX_REQUESTS_PER_HOUR", 6))
+OTP_MAX_RESEND_PER_HOUR = int(os.getenv("OTP_MAX_RESEND_PER_HOUR", 5))
+
+# Problem document base URL for RFC7807 `type` fields (configurable via .env)
+PROBLEM_BASE_URL = os.getenv("PROBLEM_BASE_URL", "https://totalesg360.com/probs")
+
 # In development/tests run tasks eagerly if DEBUG is True
 CELERY_TASK_ALWAYS_EAGER = DEBUG
 CELERY_TASK_EAGER_PROPAGATES = True

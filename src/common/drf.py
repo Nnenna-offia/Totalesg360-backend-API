@@ -6,6 +6,7 @@ from rest_framework.views import exception_handler as drf_exception_handler
 from rest_framework.exceptions import ValidationError as DRFValidationError, PermissionDenied, NotAuthenticated
 from rest_framework.response import Response
 from rest_framework import status as drf_status
+from django.conf import settings
 
 from .exceptions import DomainException
 from .api import problem_response
@@ -51,7 +52,7 @@ def custom_exception_handler(exc, context):
     if isinstance(exc, DRFValidationError):
         errors = _format_validation_errors(exc.detail)
         problem = {
-            "type": "https://api.totalesg360.com/problems/validation-error",
+            "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
             "title": "Validation error",
             "status": drf_status.HTTP_400_BAD_REQUEST,
             "detail": "One or more fields failed validation.",
@@ -63,7 +64,7 @@ def custom_exception_handler(exc, context):
     # Permission and auth errors
     if isinstance(exc, PermissionDenied):
         problem = {
-            "type": "https://api.totalesg360.com/problems/forbidden",
+            "type": f"{settings.PROBLEM_BASE_URL}/forbidden",
             "title": "Permission denied",
             "status": drf_status.HTTP_403_FORBIDDEN,
             "detail": str(exc),
@@ -73,7 +74,7 @@ def custom_exception_handler(exc, context):
 
     if isinstance(exc, NotAuthenticated):
         problem = {
-            "type": "https://api.totalesg360.com/problems/not-authenticated",
+            "type": f"{settings.PROBLEM_BASE_URL}/not-authenticated",
             "title": "Authentication required",
             "status": drf_status.HTTP_401_UNAUTHORIZED,
             "detail": str(exc),
@@ -108,7 +109,7 @@ def custom_exception_handler(exc, context):
     # Unhandled exceptions: log and return 500 problem details
     logger.exception("Unhandled exception during request: %s", getattr(request, "path", "-"))
     problem = {
-        "type": "https://api.totalesg360.com/problems/internal-server-error",
+        "type": f"{settings.PROBLEM_BASE_URL}/internal-server-error",
         "title": "Internal Server Error",
         "status": drf_status.HTTP_500_INTERNAL_SERVER_ERROR,
         "detail": "An unexpected error occurred.",

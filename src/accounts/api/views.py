@@ -6,13 +6,33 @@ from django.middleware import csrf
 from django.conf import settings
 
 from common.exceptions import Unauthorized
-from common.api import success_response
+from common.api import success_response, problem_response
 from accounts.services import auth as auth_services
 from accounts.services.signup import signup as signup_service
 from accounts.auth.tokens import decode_token
 from accounts.selectors.metadata import get_countries_list
-from accounts.selectors.user import get_user_memberships_with_roles
-from .serializers import LoginSerializer, SignupSerializer
+from accounts.selectors.user import (
+    get_user_memberships_with_roles,
+    get_user_by_email,
+    get_latest_email_verification_for_user,
+    email_verification_exists_for_user,
+)
+from .serializers import (
+    LoginSerializer,
+    SignupSerializer,
+    RequestOTPSerializer,
+    VerifyOTPSerializer,
+)
+from accounts.utils.otp import create_and_send_otp_for_user, verify_otp
+from accounts.utils.password_reset import (
+    create_and_send_password_reset_otp,
+    verify_password_reset_otp,
+)
+from accounts.selectors.user import (
+    password_reset_exists_for_user,
+    get_latest_password_reset_for_user,
+)
+from accounts.models import User
 
 
 # Cookie configuration helpers
@@ -66,10 +86,36 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         
         # Authenticate user (raises Unauthorized if invalid)
-        user = auth_services.authenticate_user(
-            email=serializer.validated_data["email"],
-            password=serializer.validated_data["password"]
-        )
+        try:
+            user = auth_services.authenticate_user(
+                email=serializer.validated_data["email"],
+                password=serializer.validated_data["password"]
+            )
+        except Unauthorized as exc:
+            email = serializer.validated_data.get("email", "").lower()
+            # If the user exists but is not active, return a clear problem detail
+            existing_user = get_user_by_email(email)
+            if existing_user and not existing_user.is_active:
+                return problem_response(
+                    {
+                        "type": f"{settings.PROBLEM_BASE_URL}/email-not-verified",
+                        "title": "Email not verified",
+                        "detail": "The email address for this account has not been verified. Please verify your email before logging in.",
+                        "code": "email_not_verified",
+                    },
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+
+            # Fallback: invalid credentials
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/invalid-credentials",
+                    "title": "Invalid credentials",
+                    "detail": str(exc.detail) if getattr(exc, "detail", None) else "Invalid email or password",
+                    "code": "invalid_credentials",
+                },
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
         
         # Create tokens
         access_token = auth_services.create_access_token(user)
@@ -323,6 +369,250 @@ class SignupView(APIView):
         result = signup_service(**serializer.validated_data)
         
         return success_response(data=result, status=status.HTTP_201_CREATED)
+
+
+
+class RequestOTPView(APIView):
+    """Request or resend an OTP for an email address."""
+
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = RequestOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].lower()
+
+        user = get_user_by_email(email)
+        if not user:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/user-not-found",
+                    "title": "User not found",
+                    "detail": f"No user with email {email} was found",
+                    "code": "user_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Determine if this is a resend
+        is_resend = email_verification_exists_for_user(user)
+
+        try:
+            ev, enqueued = create_and_send_otp_for_user(user, is_resend=is_resend)
+        except ValueError as exc:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/otp-rate-limit",
+                    "title": "OTP request limit exceeded",
+                    "detail": str(exc),
+                    "code": "otp_rate_limited",
+                },
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except Exception:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/otp-send-failed",
+                    "title": "Failed to enqueue OTP email",
+                    "detail": "An error occurred while attempting to send the OTP email",
+                    "code": "otp_send_failed",
+                },
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return success_response(data={"success": True, "enqueued": bool(enqueued)}, status=status.HTTP_202_ACCEPTED)
+
+
+class VerifyOTPView(APIView):
+    """Verify an OTP and activate the user on success."""
+
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = VerifyOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].lower()
+        otp = serializer.validated_data["otp"]
+
+        user = get_user_by_email(email)
+        if not user:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/user-not-found",
+                    "title": "User not found",
+                    "detail": f"No user with email {email} was found",
+                    "code": "user_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        ev = get_latest_email_verification_for_user(user)
+        if not ev:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/no-otp",
+                    "title": "No OTP found",
+                    "detail": "No OTP request was found for this user",
+                    "code": "no_otp",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if ev.is_expired():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/otp-expired",
+                    "title": "OTP expired",
+                    "detail": "The provided OTP has expired",
+                    "code": "otp_expired",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if verify_otp(otp, ev.hashed_otp):
+            ev.mark_verified()
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+            return success_response(data={"user_id": str(user.id)}, status=status.HTTP_200_OK)
+        else:
+            ev.attempts = (ev.attempts or 0) + 1
+            ev.save(update_fields=["attempts"]) 
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/invalid-otp",
+                    "title": "Invalid OTP",
+                    "detail": "The provided OTP is invalid",
+                    "code": "invalid_otp",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class RequestPasswordResetView(APIView):
+    """Request or resend a password-reset OTP for an email address."""
+
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = RequestOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].lower()
+
+        user = get_user_by_email(email)
+        if not user:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/user-not-found",
+                    "title": "User not found",
+                    "detail": f"No user with email {email} was found",
+                    "code": "user_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        is_resend = password_reset_exists_for_user(user)
+
+        try:
+            pr, enqueued = create_and_send_password_reset_otp(user, is_resend=is_resend)
+        except ValueError as exc:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/otp-rate-limit",
+                    "title": "Password reset rate limited",
+                    "detail": str(exc),
+                    "code": "password_reset_rate_limited",
+                },
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except Exception:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/otp-send-failed",
+                    "title": "Failed to enqueue password reset email",
+                    "detail": "An error occurred while attempting to send the password reset email",
+                    "code": "password_reset_send_failed",
+                },
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return success_response(data={"success": True, "enqueued": bool(enqueued)}, status=status.HTTP_202_ACCEPTED)
+
+
+class ResetPasswordView(APIView):
+    """Verify a password-reset OTP and set a new password."""
+
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        from .serializers import ResetPasswordSerializer
+
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"].lower()
+        otp = serializer.validated_data["otp"]
+        new_password = serializer.validated_data["new_password"]
+
+        user = get_user_by_email(email)
+        if not user:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/user-not-found",
+                    "title": "User not found",
+                    "detail": f"No user with email {email} was found",
+                    "code": "user_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        pr = get_latest_password_reset_for_user(user)
+        if not pr:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/no-otp",
+                    "title": "No OTP found",
+                    "detail": "No password reset request was found for this user",
+                    "code": "no_password_reset",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if pr.is_expired():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/otp-expired",
+                    "title": "OTP expired",
+                    "detail": "The provided OTP has expired",
+                    "code": "otp_expired",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if verify_password_reset_otp(otp, pr.hashed_otp):
+            pr.mark_used()
+            user.set_password(new_password)
+            user.is_active = True
+            user.save(update_fields=["password", "is_active"])
+            return success_response(data={"user_id": str(user.id)}, status=status.HTTP_200_OK)
+        else:
+            pr.attempts = (pr.attempts or 0) + 1
+            pr.save(update_fields=["attempts"])
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/invalid-otp",
+                    "title": "Invalid OTP",
+                    "detail": "The provided OTP is invalid",
+                    "code": "invalid_otp",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class CountriesView(APIView):

@@ -1,6 +1,17 @@
 """Authentication API URLs."""
 from django.urls import path
-from .views import LoginView, RefreshView, LogoutView, CSRFView, SignupView, CountriesView
+from .views import (
+    LoginView,
+    RefreshView,
+    LogoutView,
+    CSRFView,
+    SignupView,
+    CountriesView,
+    RequestOTPView,
+    VerifyOTPView,
+    RequestPasswordResetView,
+    ResetPasswordView,
+)
 
 app_name = "accounts"
 
@@ -11,4 +22,8 @@ urlpatterns = [
     path("auth/logout/", LogoutView.as_view(), name="logout"),
     path("auth/csrf/", CSRFView.as_view(), name="csrf"),
     path("auth/countries/", CountriesView.as_view(), name="countries"),
+    path("auth/request-otp/", RequestOTPView.as_view(), name="request_otp"),
+    path("auth/verify-otp/", VerifyOTPView.as_view(), name="verify_otp"),
+    path("auth/request-password-reset/", RequestPasswordResetView.as_view(), name="request_password_reset"),
+    path("auth/reset-password/", ResetPasswordView.as_view(), name="reset_password"),
 ]

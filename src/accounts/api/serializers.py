@@ -46,3 +46,31 @@ class SignupSerializer(serializers.Serializer):
         choices=Organization.PrimaryReportingFocus.choices,
         help_text="Primary reporting focus: NIGERIA, INTERNATIONAL, or HYBRID"
     )
+
+
+class RequestOTPSerializer(serializers.Serializer):
+    """Request or resend OTP for an email address."""
+    email = serializers.EmailField(required=True)
+
+
+class VerifyOTPSerializer(serializers.Serializer):
+    """Verify provided OTP for email."""
+    email = serializers.EmailField(required=True)
+    otp = serializers.CharField(required=True, write_only=True, min_length=4, max_length=8)
+
+
+class RequestPasswordResetSerializer(serializers.Serializer):
+    """Request a password reset code to be sent to email."""
+    email = serializers.EmailField(required=True)
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    """Reset password using OTP code."""
+    email = serializers.EmailField(required=True)
+    otp = serializers.CharField(required=True, write_only=True, min_length=4, max_length=8)
+    new_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        min_length=8,
+        style={"input_type": "password"}
+    )

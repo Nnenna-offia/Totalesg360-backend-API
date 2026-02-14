@@ -1,5 +1,18 @@
 """Selectors for fetching organization metadata and options."""
+from typing import Optional
 from organizations.models import Organization
+
+
+def organization_exists_by_name(name: str) -> bool:
+    """Check if an organization exists with the given name.
+    
+    Args:
+        name: Organization name
+        
+    Returns:
+        True if organization exists, False otherwise
+    """
+    return Organization.objects.filter(name=name).exists()
 
 
 def get_sectors_list():
