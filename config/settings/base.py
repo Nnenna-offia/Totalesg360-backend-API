@@ -36,6 +36,7 @@ INSTALLED_APPS = [
 
     #third party apps
     'rest_framework',
+    'corsheaders',
     'django_celery_beat',       # Celery Beat scheduler stored in DB
     'django_celery_results',    # optional: store task results in Django DB
     'django_redis',
@@ -61,6 +62,7 @@ AUTH_USER_MODEL = 'accounts.User'
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -203,6 +205,20 @@ CSRF_COOKIE_HTTPONLY = False  # Must be False so frontend can read it
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_NAME = "csrftoken"
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()]
+
+# CORS configuration - allow frontend origins to access API and send credentials
+# Do NOT set CORS_ALLOW_ALL_ORIGINS = True when using credentials; instead whitelist origins.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://dev-backend.totalesg360.com").split(",") if origin.strip()
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'X-CSRFToken',
+]
 
 # Session cookie security
 SESSION_COOKIE_SECURE = not DEBUG
