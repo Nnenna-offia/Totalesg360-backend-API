@@ -177,6 +177,15 @@ class LoginView(APIView):
             samesite=csrf_config["samesite"],
             path=csrf_config["path"],
         )
+
+        # Also expose the CSRF token in a response header so JS running on a different
+        # origin (e.g., localhost) can read it even when cookies are Secure/HttpOnly
+        # (clients may prefer reading header instead of cookies).
+        response["X-CSRFToken"] = csrf_token
+        response["Access-Control-Expose-Headers"] = ", ".join([
+            *(getattr(settings, "CORS_EXPOSE_HEADERS", []) if hasattr(settings, "CORS_EXPOSE_HEADERS") else []),
+            "X-CSRFToken",
+        ])
         
         return response
 

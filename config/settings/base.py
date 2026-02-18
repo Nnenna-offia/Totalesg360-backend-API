@@ -220,6 +220,11 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'X-CSRFToken',
 ]
 
+# Expose the CSRF header to browsers so frontends on other origins can read it
+CORS_EXPOSE_HEADERS = [
+    'X-CSRFToken',
+]
+
 # Session cookie security
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
