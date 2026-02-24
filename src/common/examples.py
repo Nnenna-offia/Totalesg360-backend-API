@@ -104,3 +104,43 @@ class ExampleCreateOrgView(APIView):
                             raise InternalServerError(detail="Demo: internal server error")
 
                         return success_response({"message": "no error", "type": err_type})
+
+
+class ExampleOrgProtectedView(APIView):
+        """Example view showing Organization Guard usage.
+
+        - Middleware `OrganizationContextMiddleware` makes `request.organization`,
+            `request.membership`, and `request.role` available.
+        - Use `IsOrgMember` to require an active membership for the resolved org.
+        - Use `HasCapability` and set `required_capability` on the view to require
+            a specific capability code (e.g., `org.manage`).
+        """
+
+        permission_classes = (IsAuthenticated,)
+
+        # Demonstrates how views can declare a required capability string
+        required_capability = None
+
+        def get(self, request):
+                # Lazy-import permissions to avoid circular imports in some setups
+                from common.permissions import IsOrgMember, HasCapability
+
+                # If you want to enforce membership and capability for this endpoint,
+                # set permission_classes and required_capability accordingly on the class.
+                # Example usage (uncomment to enforce):
+                # permission_classes = (IsAuthenticated, IsOrgMember, HasCapability)
+                # required_capability = 'org.manage'
+
+                org = getattr(request, 'organization', None)
+                membership = getattr(request, 'membership', None)
+
+                data = {
+                        'organization': {
+                                'id': str(org.id) if org else None,
+                                'name': org.name if org else None,
+                        },
+                        'is_member': bool(membership),
+                        'role': membership.role.code if membership and membership.role else None,
+                }
+
+                return success_response(data=data)
