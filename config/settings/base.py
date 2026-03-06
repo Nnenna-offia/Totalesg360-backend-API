@@ -211,7 +211,7 @@ CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORI
 # CORS configuration - allow frontend origins to access API and send credentials
 # Do NOT set CORS_ALLOW_ALL_ORIGINS = True when using credentials; instead whitelist origins.
 CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://dev-backend.totalesg360.com").split(",") if origin.strip()
+    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://dev-frontend.totalesg360.com").split(",") if origin.strip()
 ]
 
 CORS_ALLOW_CREDENTIALS = True
