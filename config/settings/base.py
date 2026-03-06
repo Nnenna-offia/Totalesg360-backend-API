@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'organizations',
     'indicators',
     'roles',
+    'submissions',
 ]
 
 

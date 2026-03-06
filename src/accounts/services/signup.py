@@ -95,6 +95,31 @@ def signup(
             role=owner_role,
             added_by=None,  # System assignment
         )
+        # Grant the creating user super-admin style access:
+        # - mark as staff so HasGlobalCapability staff bypass applies
+        # - assign all existing roles for this new organization so the user
+        #   has every possible role/capability within their org
+        try:
+            user.is_staff = True
+            user.save(update_fields=["is_staff"])
+
+            # create memberships for any roles not yet assigned
+            existing_role_ids = set(
+                Membership.objects.filter(user=user, organization=organization).values_list("role_id", flat=True)
+            )
+            all_roles = Role.objects.all()
+            to_create = []
+            for r in all_roles:
+                if r.id not in existing_role_ids:
+                    to_create.append(
+                        Membership(user=user, organization=organization, role=r, is_active=True, added_by=None)
+                    )
+            if to_create:
+                Membership.objects.bulk_create(to_create)
+        except Exception:
+            # Do not fail signup if role assignment/staff flag update fails;
+            # log and continue (user still has owner membership).
+            logger.exception("Failed to grant super-admin roles to signup user", extra={"user_id": str(user.id)})
         
         # Bootstrap regulatory frameworks
         _assign_regulatory_frameworks(

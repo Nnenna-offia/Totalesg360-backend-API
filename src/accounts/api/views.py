@@ -33,6 +33,13 @@ from accounts.selectors.user import (
     get_latest_password_reset_for_user,
 )
 from accounts.models import User
+from rest_framework.permissions import IsAuthenticated
+from common.permissions import HasGlobalCapability
+from accounts.selectors.org_context import get_org_and_membership
+from accounts.selectors.user import user_exists_by_email
+from roles.models import Role
+from organizations.models import Membership
+from django.utils.crypto import get_random_string
 
 
 # Cookie configuration helpers
@@ -128,7 +135,14 @@ class LoginView(APIView):
         # Get user's memberships with roles and capabilities
         memberships = get_user_memberships_with_roles(user)
         
-        # Build response with user info and secure cookies
+        # Rotate the CSRF token on every login (prevents fixation attacks).
+        # Must be done BEFORE building the response so get_token() returns
+        # the new 64-char masked token to embed in the body.
+        csrf.rotate_token(request)
+        csrf_token = csrf.get_token(request)  # 64-char masked token
+
+        # Build response with user info, secure cookies, and the CSRF token
+        # in the body so clients can reliably read it without header parsing.
         response = Response(
             data={
                 "user": {
@@ -138,6 +152,9 @@ class LoginView(APIView):
                     "last_name": user.last_name,
                 },
                 "memberships": memberships,
+                # 64-char masked CSRF token — send this back as X-CSRFToken
+                # header on every POST/PUT/DELETE request.
+                "csrf_token": csrf_token,
             },
             status=status.HTTP_200_OK
         )
@@ -166,21 +183,8 @@ class LoginView(APIView):
             path=refresh_config["path"],
         )
         
-        # Set CSRF token cookie
-        csrf_token = csrf.get_token(request)
-        csrf_config = get_cookie_config("csrf")
-        response.set_cookie(
-            key=csrf_config["key"],
-            value=csrf_token,
-            httponly=csrf_config["httponly"],
-            secure=csrf_config["secure"],
-            samesite=csrf_config["samesite"],
-            path=csrf_config["path"],
-        )
-
-        # Also expose the CSRF token in a response header so JS running on a different
-        # origin (e.g., localhost) can read it even when cookies are Secure/HttpOnly
-        # (clients may prefer reading header instead of cookies).
+        # Expose the 64-char masked token in the response header too.
+        # The same value is already in the response body as `csrf_token`.
         response["X-CSRFToken"] = csrf_token
         response["Access-Control-Expose-Headers"] = ", ".join([
             *(getattr(settings, "CORS_EXPOSE_HEADERS", []) if hasattr(settings, "CORS_EXPOSE_HEADERS") else []),
@@ -622,6 +626,92 @@ class ResetPasswordView(APIView):
                 },
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
+
+
+class AdminCreateUserView(APIView):
+    """Admin endpoint to create/invite users and assign roles within an organization.
+
+    POST /auth/admin/users/
+    Body: { email, password (optional), first_name, last_name, role_ids: [<role_uuid>, ...], is_staff (optional) }
+    """
+
+    permission_classes = []
+    authentication_classes = []
+    required_capability = "manage_users"
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasGlobalCapability()]
+
+    def post(self, request):
+        from .serializers import AdminCreateUserSerializer
+
+        serializer = AdminCreateUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+
+        # Resolve organization context
+        org, caller_membership = get_org_and_membership(request=request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/org-required",
+                    "title": "Organization required",
+                    "detail": "Organization context is required for creating members.",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email = data["email"].lower()
+        if user_exists_by_email(email):
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/email-exists",
+                    "title": "Email already registered",
+                    "detail": f"A user with email {email} already exists.",
+                },
+                status_code=status.HTTP_409_CONFLICT,
+            )
+
+        password = data.get("password") or get_random_string(16)
+        is_staff_flag = bool(data.get("is_staff", False)) and bool(getattr(request.user, "is_staff", False))
+        return_temp = bool(data.get("return_temporary_password", False))
+
+        # Use service layer to create user (service returns plaintext password)
+        from accounts.services.invite import (
+            create_user_with_roles,
+            send_temporary_password_email,
+            enqueue_password_reset,
+        )
+
+        user, plaintext_password, _ = create_user_with_roles(
+            email=email,
+            first_name=data["first_name"],
+            last_name=data["last_name"],
+            password=password,
+            is_staff=is_staff_flag,
+            roles=data.get("role_ids", []),
+            added_by=request.user,
+            is_active=True,
+        )
+
+        # Create memberships now that we have organization context
+        roles = data.get("role_ids", [])
+        to_create = []
+        for r in roles:
+            to_create.append(Membership(user=user, organization=org, role=r, is_active=True, added_by=request.user))
+        if to_create:
+            Membership.objects.bulk_create(to_create)
+
+        response_data = {"user_id": str(user.id), "email": user.email}
+        if return_temp:
+            sent = send_temporary_password_email(user, plaintext_password)
+            response_data["temporary_password_sent"] = bool(sent)
+        else:
+            enqueued = enqueue_password_reset(user)
+            response_data["password_reset_email_enqueued"] = bool(enqueued)
+
+        return success_response(data=response_data, status=status.HTTP_201_CREATED)
 
 
 class CountriesView(APIView):

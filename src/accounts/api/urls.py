@@ -11,6 +11,7 @@ from .views import (
     VerifyOTPView,
     RequestPasswordResetView,
     ResetPasswordView,
+    AdminCreateUserView,
 )
 
 app_name = "accounts"
@@ -26,4 +27,5 @@ urlpatterns = [
     path("auth/verify-otp/", VerifyOTPView.as_view(), name="verify_otp"),
     path("auth/request-password-reset/", RequestPasswordResetView.as_view(), name="request_password_reset"),
     path("auth/reset-password/", ResetPasswordView.as_view(), name="reset_password"),
+    path("auth/admin/users/", AdminCreateUserView.as_view(), name="admin_create_user"),
 ]

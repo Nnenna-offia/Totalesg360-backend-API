@@ -4,10 +4,12 @@ class Capabilities:
     # Organization
     MANAGE_ORGANIZATION = "manage_organization"
     MANAGE_USERS = "manage_users"
+    MANAGE_ROLES = "manage_roles"
 
     # Configuration
     CONFIGURE_ESG = "configure_esg"
     MANAGE_TARGETS = "manage_targets"
+    MANAGE_INDICATORS = "manage_indicators"
 
     # Data submission
     SUBMIT_ENVIRONMENTAL = "submit_environmental"

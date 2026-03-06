@@ -3,10 +3,12 @@ from .capabilities import Capabilities
 
 ROLE_CAPABILITIES = {
     "org_admin": [
+        Capabilities.MANAGE_ROLES,
         Capabilities.MANAGE_ORGANIZATION,
         Capabilities.MANAGE_USERS,
         Capabilities.CONFIGURE_ESG,
         Capabilities.MANAGE_TARGETS,
+        Capabilities.MANAGE_INDICATORS,
         Capabilities.VIEW_DASHBOARDS,
     ],
     "environmental_officer": [

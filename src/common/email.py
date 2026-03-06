@@ -32,3 +32,15 @@ def make_password_reset_email_body(otp: str, ttl_seconds: int) -> str:
         f"You requested a password reset. Your password reset code is: {otp}\n\n"
         f"It will expire in {minutes} minute(s). If you did not request this, please ignore this email or contact support."
     )
+
+
+def make_account_temporary_password_email_body(temp_password: str, ttl_minutes: int = 60) -> str:
+    """Build email body for new account with temporary password.
+
+    TTL indicates how long the temporary password should be considered valid
+    before the user is required to change it (informational only).
+    """
+    return (
+        f"An account was created for you. Your temporary password is: {temp_password}\n\n"
+        f"Please sign in and change your password as soon as possible. This temporary password will be valid for {ttl_minutes} minutes."
+    )

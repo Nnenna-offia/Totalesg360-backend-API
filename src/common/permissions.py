@@ -79,3 +79,24 @@ class HasCapability(permissions.BasePermission):
         if not membership or not membership.role:
             return False
         return membership.role.role_capabilities.filter(capability__code=required).exists()
+
+
+class HasGlobalCapability(permissions.BasePermission):
+    """Check that the authenticated user has the given capability on any of their roles
+    or is staff. View should set `required_capability` attribute.
+    """
+
+    message = "User lacks required global capability."
+
+    def has_permission(self, request, view):
+        required = getattr(view, "required_capability", None)
+        if not required:
+            return True
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        # staff bypass
+        if getattr(user, "is_staff", False):
+            return True
+        # any membership role with the capability
+        return user.memberships.filter(role__role_capabilities__capability__code=required).exists()
