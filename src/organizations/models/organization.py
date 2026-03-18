@@ -16,6 +16,33 @@ class Organization(BaseModel):
         HYBRID = "HYBRID", "Nigeria + International (Hybrid)"
     
     name = models.CharField(max_length=255, unique=True)
+    registered_name = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Official registered company name"
+    )
+    registration_number = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Company registration number"
+    )
+    company_size = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=[
+            ("small", "Small (1-50 employees)"),
+            ("medium", "Medium (51-250 employees)"),
+            ("large", "Large (251-1000 employees)"),
+            ("enterprise", "Enterprise (1000+ employees)"),
+        ],
+        help_text="Organization size category"
+    )
+    logo = models.ImageField(
+        upload_to="organization_logos/",
+        blank=True,
+        null=True,
+        help_text="Organization logo"
+    )
     sector = models.CharField(
         max_length=50,
         choices=[
@@ -42,8 +69,11 @@ class Organization(BaseModel):
     )
     
     # Config-driven: stores sector-specific settings, scopes, permits, etc.
+    def _default_settings():
+        return {"modules": {}, "sector_defaults": {}}
+
     settings = models.JSONField(
-        default=dict,
+        default=_default_settings,
         blank=True,
         help_text="Sector-specific configuration (scopes, permits, frameworks)"
     )

@@ -23,112 +23,45 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def _seed_capabilities(self):
-        """Create Capability records from Capabilities class."""
-        capabilities_data = [
-            # Organization
-            {
-                'code': Capabilities.MANAGE_ORGANIZATION,
-                'name': 'Manage Organization',
-                'description': 'Can update organization settings, sector config',
-                'pillar': '',
-            },
-            {
-                'code': Capabilities.MANAGE_USERS,
-                'name': 'Manage Users',
-                'description': 'Can invite users, assign roles, manage memberships',
-                'pillar': '',
-            },
-            # Configuration
-            {
-                'code': Capabilities.CONFIGURE_ESG,
-                'name': 'Configure ESG Settings',
-                'description': 'Can configure scopes, permits, frameworks',
-                'pillar': '',
-            },
-            {
-                'code': Capabilities.MANAGE_TARGETS,
-                'name': 'Manage Targets',
-                'description': 'Can create and edit ESG targets',
-                'pillar': '',
-            },
-            # Data submission
-            {
-                'code': Capabilities.SUBMIT_ENVIRONMENTAL,
-                'name': 'Submit Environmental Data',
-                'description': 'Can submit emissions, energy, waste, water data',
-                'pillar': 'Environmental',
-            },
-            {
-                'code': Capabilities.SUBMIT_SOCIAL,
-                'name': 'Submit Social Data',
-                'description': 'Can submit workforce, training, HSE data',
-                'pillar': 'Social',
-            },
-            {
-                'code': Capabilities.SUBMIT_GOVERNANCE,
-                'name': 'Submit Governance Data',
-                'description': 'Can submit board, policy, compliance data',
-                'pillar': 'Governance',
-            },
-            # Review
-            {
-                'code': Capabilities.VIEW_DASHBOARDS,
-                'name': 'View Dashboards',
-                'description': 'Can view ESG dashboards and reports',
-                'pillar': '',
-            },
-            {
-                'code': Capabilities.REVIEW_SUBMISSIONS,
-                'name': 'Review Submissions',
-                'description': 'Can review and approve data submissions',
-                'pillar': '',
-            },
-        ]
-        
-        for cap_data in capabilities_data:
-            Capability.objects.get_or_create(
-                code=cap_data['code'],
-                defaults={
-                    'name': cap_data['name'],
-                    'description': cap_data['description'],
-                    'pillar': cap_data['pillar'],
-                }
-            )
-        
-        self.stdout.write(f'  Created/verified {len(capabilities_data)} capabilities')
+        """Create Capability records from Capabilities class by introspecting the Capabilities constants."""
+        created = 0
+        for attr in dir(Capabilities):
+            # pick uppercase attributes which we use as constants
+            if not attr.isupper():
+                continue
+            code = getattr(Capabilities, attr)
+            obj, was_created = Capability.objects.get_or_create(code=code, defaults={'name': code, 'description': ''})
+            if was_created:
+                created += 1
+
+        self.stdout.write(f'  Created/verified capabilities (new created: {created})')
 
     @transaction.atomic
     def _seed_roles(self):
         """Create Role records."""
         roles_data = [
             {
-                'code': 'org_admin',
-                'name': 'Organization Administrator',
-                'description': 'Full control over organization settings, users, and data',
+                'code': 'org_owner',
+                'name': 'Org Owner',
+                'description': 'Organization owner with full organization-level permissions',
                 'is_system': True,
             },
             {
-                'code': 'environmental_officer',
-                'name': 'Environmental Officer',
-                'description': 'Submits and manages environmental data',
+                'code': 'sustainability_manager',
+                'name': 'Sustainability Manager',
+                'description': 'Manager for sustainability operations and targets',
                 'is_system': True,
             },
             {
-                'code': 'social_officer',
-                'name': 'Social Officer',
-                'description': 'Submits and manages social data',
+                'code': 'data_contributor',
+                'name': 'Data Contributor',
+                'description': 'Contributes activity and indicator data',
                 'is_system': True,
             },
             {
-                'code': 'governance_officer',
-                'name': 'Governance Officer',
-                'description': 'Submits and manages governance data',
-                'is_system': True,
-            },
-            {
-                'code': 'auditor',
-                'name': 'Auditor / Reviewer',
-                'description': 'Reviews submissions and provides oversight',
+                'code': 'viewer',
+                'name': 'Viewer',
+                'description': 'Read-only viewer role',
                 'is_system': True,
             },
         ]

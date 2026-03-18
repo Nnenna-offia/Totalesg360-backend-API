@@ -1,0 +1,26 @@
+[
+  {
+    "model": "indicators.indicator",
+    "pk": 1,
+    "fields": {
+      "name": "Environmental 1",
+      "code": "IND_0001",
+      "pillar": "ENV",
+      "data_type": "numeric",
+      "unit": "kg",
+      "description": "Auto-generated indicator"
+    }
+  },
+  {
+    "model": "indicators.indicator",
+    "pk": 2,
+    "fields": {
+      "name": "Environmental 2",
+      "code": "IND_0002",
+      "pillar": "ENV",
+      "data_type": "numeric",
+      "unit": "kg",
+      "description": "Auto-generated indicator"
+    }
+  }
+]

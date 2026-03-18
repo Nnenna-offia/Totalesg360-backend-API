@@ -1,0 +1,44 @@
+[
+  {
+    "model": "indicators.indicator",
+    "pk": "0d2d475a-df10-4266-9341-560393281912",
+    "fields": {
+      "created_at": "2026-03-14T07:43:44.360956+00:00",
+      "updated_at": "2026-03-14T07:43:44.360958+00:00",
+      "name": "Environmental 3",
+      "code": "IND_0003",
+      "pillar": "ENV",
+      "data_type": "numeric",
+      "unit": "kg",
+      "description": "Auto-generated indicator"
+    }
+  },
+  {
+    "model": "indicators.indicator",
+    "pk": "b3cab1cb-db7a-408e-be68-d5c7995e62ef",
+    "fields": {
+      "created_at": "2026-03-14T07:43:44.361458+00:00",
+      "updated_at": "2026-03-14T07:43:44.361459+00:00",
+      "name": "Environmental 4",
+      "code": "IND_0004",
+      "pillar": "ENV",
+      "data_type": "numeric",
+      "unit": "kg",
+      "description": "Auto-generated indicator"
+    }
+  },
+  {
+    "model": "indicators.indicator",
+    "pk": "09773e51-64d9-4810-82c4-56b3bc15d080",
+    "fields": {
+      "created_at": "2026-03-14T07:43:44.361737+00:00",
+      "updated_at": "2026-03-14T07:43:44.361739+00:00",
+      "name": "Environmental 5",
+      "code": "IND_0005",
+      "pillar": "ENV",
+      "data_type": "numeric",
+      "unit": "kg",
+      "description": "Auto-generated indicator"
+    }
+  }
+]

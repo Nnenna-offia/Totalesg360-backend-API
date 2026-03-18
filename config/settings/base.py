@@ -48,6 +48,12 @@ INSTALLED_APPS = [
     'indicators',
     'roles',
     'submissions',
+    # newly added apps
+    'compliance',
+    'targets',
+    'dashboard',
+    'activities',
+    'emissions',
 ]
 
 
@@ -146,6 +152,10 @@ CACHES = {
         },
     }
 }
+
+# Dashboard snapshot retention (days)
+DASHBOARD_SNAPSHOT_RETENTION_DAYS = int(os.getenv("DASHBOARD_SNAPSHOT_RETENTION_DAYS", 90))
+
 
 # ---------------------------
 # Celery configuration

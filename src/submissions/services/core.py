@@ -10,7 +10,7 @@ from submissions.models import DataSubmission, ReportingPeriod
 from indicators.models import Indicator
 
 
-CAP_SUBMIT = "submit_indicator"
+CAP_SUBMIT = "indicator.manage"  # align with view permission requirement
 CAP_MANAGE_PERIOD = "manage_period"
 CAP_APPROVE = "approve_submission"
 
@@ -79,6 +79,13 @@ def submit_indicator_value(*, org, user, indicator_id: str, reporting_period_id:
         indicator = Indicator.objects.get(id=indicator_id)
     except Indicator.DoesNotExist:
         raise ValidationError("Indicator not found")
+
+    # Block direct submission for activity-derived indicators
+    if indicator.collection_method == "activity":
+        raise ValidationError(
+            "This indicator is activity-derived and cannot be submitted directly. "
+            "Please submit activity data instead."
+        )
 
     try:
         period = ReportingPeriod.objects.get(id=reporting_period_id, organization=org)
@@ -156,6 +163,18 @@ def finalize_period(*, org, user, reporting_period_id: str) -> None:
 
     # Lock the period
     period.lock(by_user=user)
+
+    # Persist emission-derived indicators when a period is locked
+    try:
+        from emissions.services.persist_indicators import persist_emission_indicators
+        # best-effort; do not break finalize if persistence fails
+        try:
+            persist_emission_indicators(org, period, by_user=user, submit=True)
+        except Exception:
+            pass
+    except Exception:
+        # emissions app may not be present in all deployments
+        pass
 
 
 def approve_submission(*, org, user, submission_id: str) -> DataSubmission:

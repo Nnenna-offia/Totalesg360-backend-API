@@ -15,6 +15,10 @@ class Indicator(BaseModel):
         TEXT = "text", "Text"
         CURRENCY = "currency", "Currency"
 
+    class CollectionMethod(models.TextChoices):
+        ACTIVITY = "activity", "Activity Based"
+        DIRECT = "direct", "Direct Submission"
+
     code = models.CharField(max_length=100, unique=True)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -23,6 +27,15 @@ class Indicator(BaseModel):
     unit = models.CharField(max_length=50, blank=True, null=True)
     is_active = models.BooleanField(default=True, db_index=True)
     version = models.CharField(max_length=16, blank=True, null=True)
+    
+    # Collection method: how indicator values are obtained
+    collection_method = models.CharField(
+        max_length=20,
+        choices=CollectionMethod.choices,
+        default=CollectionMethod.DIRECT,
+        db_index=True,
+        help_text="Activity-based indicators are calculated from activities; direct indicators are manually submitted"
+    )
 
     class Meta:
         db_table = "indicators_indicator"

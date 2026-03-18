@@ -1,21 +1,42 @@
 # roles/capabilities.py
 
 class Capabilities:
-    # Organization
-    MANAGE_ORGANIZATION = "manage_organization"
-    MANAGE_USERS = "manage_users"
+    # Organization capabilities
+    ORG_MANAGE = "org.manage"
+    ORG_INVITE_MEMBERS = "org.invite_members"
+    ORG_MANAGE_FACILITIES = "org.manage_facilities"
+    ORG_VIEW_MEMBERS = "org.view_members"
+
+    # Activity capabilities
+    ACTIVITY_TYPE_VIEW = "activity_type.view"
+    ACTIVITY_SUBMIT = "activity.submit"
+    ACTIVITY_EDIT = "activity.edit"
+    ACTIVITY_DELETE = "activity.delete"
+    ACTIVITY_VIEW_SUBMISSIONS = "activity.view_submissions"
+
+    # Emission capabilities
+    EMISSION_VIEW = "emission.view"
+    EMISSION_VIEW_SCOPE_BREAKDOWN = "emission.view_scope_breakdown"
+
+    # Target capabilities
+    TARGET_CREATE = "target.create"
+    TARGET_EDIT = "target.edit"
+    TARGET_DELETE = "target.delete"
+    TARGET_VIEW = "target.view"
+
+    # Indicator capabilities
+    INDICATOR_VIEW = "indicator.view"
+    # Submission approval
+    APPROVE_SUBMISSION = "approve_submission"
+    # Compliance capabilities
+    COMPLIANCE_VIEW = "compliance.view"
+
+    # Platform admin (global)
+    SCOPE_MANAGE = "scope.manage"
+    ACTIVITY_TYPE_MANAGE = "activity_type.manage"
+    EMISSION_FACTOR_MANAGE = "emission_factor.manage"
+    INDICATOR_MANAGE = "indicator.manage"
+    FRAMEWORK_MANAGE = "framework.manage"
+
+    # backwards-compat / system operations
     MANAGE_ROLES = "manage_roles"
-
-    # Configuration
-    CONFIGURE_ESG = "configure_esg"
-    MANAGE_TARGETS = "manage_targets"
-    MANAGE_INDICATORS = "manage_indicators"
-
-    # Data submission
-    SUBMIT_ENVIRONMENTAL = "submit_environmental"
-    SUBMIT_SOCIAL = "submit_social"
-    SUBMIT_GOVERNANCE = "submit_governance"
-
-    # Review
-    VIEW_DASHBOARDS = "view_dashboards"
-    REVIEW_SUBMISSIONS = "review_submissions"

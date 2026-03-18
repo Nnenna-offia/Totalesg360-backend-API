@@ -16,3 +16,12 @@ class DataSubmissionAdmin(admin.ModelAdmin):
 	list_display = ("organization", "indicator", "reporting_period", "facility", "status", "submitted_at")
 	list_filter = ("status", "indicator")
 	search_fields = ("organization__name", "indicator__code")
+
+from .models import ActivitySubmission
+
+
+@admin.register(ActivitySubmission)
+class ActivitySubmissionAdmin(admin.ModelAdmin):
+	list_display = ("organization", "activity_type", "reporting_period", "facility", "value", "unit")
+	list_filter = ("activity_type",)
+	search_fields = ("organization__name", "activity_type__name")

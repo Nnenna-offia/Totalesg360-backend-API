@@ -34,3 +34,4 @@ gunicorn==20.1.0
 django-countries
 setuptools
 django-cors-headers
+Pillow==12.1.1

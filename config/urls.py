@@ -24,4 +24,9 @@ urlpatterns = [
     path('api/v1/submissions/', include('submissions.api.urls')),
     path('api/v1/indicators/', include('indicators.api.urls')),
     path('api/v1/roles/', include('roles.api.urls')),
+    path('api/v1/compliance/', include('compliance.api.urls')),
+    path('api/v1/targets/', include('targets.api.urls')),
+    path('api/v1/dashboard/', include('dashboard.api.urls')),
+    path('api/v1/activities/', include('activities.api.urls')),
+    path('api/v1/emissions/', include('emissions.api.urls')),
 ]

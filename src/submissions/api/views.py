@@ -1,9 +1,12 @@
 from rest_framework.views import APIView
-from rest_framework import status
+from rest_framework import status, parsers
+from rest_framework.exceptions import ParseError as DRFParseError
 
 from common.permissions import IsOrgMember, HasCapability
 from common.api import success_response, problem_response
 from django.conf import settings
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+import logging
 from accounts.selectors.org_context import get_org_and_membership
 from submissions.api.serializers import SubmissionCreateSerializer, DataSubmissionSerializer
 from submissions.services import submit_indicator_value, finalize_period, approve_submission
@@ -17,7 +20,7 @@ from rest_framework.permissions import IsAdminUser
 
 class SubmitIndicatorAPIView(APIView):
 	permission_classes = [IsOrgMember, HasCapability]
-	required_capability = "submit_indicator"
+	required_capability = "indicator.manage"
 
 	def post(self, request):
 		org, membership = get_org_and_membership(request=request)
@@ -25,15 +28,23 @@ class SubmitIndicatorAPIView(APIView):
 		serializer.is_valid(raise_exception=True)
 		data = serializer.validated_data
 
-		obj, created = submit_indicator_value(
-			org=org,
-			user=request.user,
-			indicator_id=str(data["indicator_id"]),
-			reporting_period_id=str(data["reporting_period_id"]),
-			facility_id=str(data.get("facility_id")) if data.get("facility_id") else None,
-			value=data.get("value"),
-			metadata=data.get("metadata"),
-		)
+		try:
+			obj, created = submit_indicator_value(
+				org=org,
+				user=request.user,
+				indicator_id=str(data["indicator_id"]),
+				reporting_period_id=str(data["reporting_period_id"]),
+				facility_id=str(data.get("facility_id")) if data.get("facility_id") else None,
+				value=data.get("value"),
+				metadata=data.get("metadata"),
+			)
+		except DjangoValidationError as exc:
+			return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/invalid-request", 'title': 'Invalid payload', 'detail': str(exc)}, status.HTTP_400_BAD_REQUEST)
+		except PermissionDenied as exc:
+			return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/forbidden", 'title': 'Forbidden', 'detail': str(exc)}, status.HTTP_403_FORBIDDEN)
+		except Exception:
+			logging.exception('Unexpected error in submit_indicator_value for org %s', getattr(org, 'id', None))
+			return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/internal-server-error", 'title': 'Internal Server Error', 'detail': 'An unexpected error occurred.'}, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 		out = DataSubmissionSerializer(obj)
 		return success_response(data=out.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
@@ -193,11 +204,53 @@ class FinalizePeriodAPIView(APIView):
 
 class ApproveSubmissionAPIView(APIView):
 	permission_classes = [IsOrgMember, HasCapability]
+	# accept JSON or form/multipart; handle JSON parse errors explicitly
+	parser_classes = [parsers.JSONParser, parsers.FormParser, parsers.MultiPartParser]
 	required_capability = "approve_submission"
 
 	def post(self, request, submission_id):
 		org, _ = get_org_and_membership(request=request)
-		sub = approve_submission(org=org, user=request.user, submission_id=str(submission_id))
+		try:
+			sub = approve_submission(org=org, user=request.user, submission_id=str(submission_id))
+		except DRFParseError as exc:
+			problem = {
+				"type": f"{settings.PROBLEM_BASE_URL}/invalid-request",
+				"title": "Invalid request",
+				"status": status.HTTP_400_BAD_REQUEST,
+				"detail": str(exc),
+				"instance": getattr(request, "path", None),
+			}
+			return problem_response(problem, status.HTTP_400_BAD_REQUEST)
+
+		except DjangoValidationError as exc:
+			problem = {
+				"type": f"{settings.PROBLEM_BASE_URL}/not-found",
+				"title": "Not found",
+				"status": status.HTTP_404_NOT_FOUND,
+				"detail": str(exc),
+				"instance": getattr(request, "path", None),
+			}
+			return problem_response(problem, status.HTTP_404_NOT_FOUND)
+		except PermissionDenied as exc:
+			problem = {
+				"type": f"{settings.PROBLEM_BASE_URL}/forbidden",
+				"title": "Permission denied",
+				"status": status.HTTP_403_FORBIDDEN,
+				"detail": str(exc),
+				"instance": getattr(request, "path", None),
+			}
+			return problem_response(problem, status.HTTP_403_FORBIDDEN)
+		except Exception:
+			logging.exception('Unexpected error approving submission %s for org %s', submission_id, getattr(org, 'id', None))
+			problem = {
+				"type": f"{settings.PROBLEM_BASE_URL}/internal-server-error",
+				"title": "Internal Server Error",
+				"status": status.HTTP_500_INTERNAL_SERVER_ERROR,
+				"detail": "An unexpected error occurred.",
+				"instance": getattr(request, "path", None),
+			}
+			return problem_response(problem, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 		out = DataSubmissionSerializer(sub)
 		return success_response(data=out.data)
 

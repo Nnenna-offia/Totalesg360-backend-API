@@ -1,0 +1,22 @@
+[
+  {
+    "model": "activities.activitytype",
+    "pk": 1,
+    "fields": {
+      "name": "AutoActivity 1",
+      "unit": "kgCO2",
+      "scope": null,
+      "description": "Auto-generated activity type"
+    }
+  },
+  {
+    "model": "activities.activitytype",
+    "pk": 2,
+    "fields": {
+      "name": "AutoActivity 2",
+      "unit": "kgCO2",
+      "scope": null,
+      "description": "Auto-generated activity type"
+    }
+  }
+]

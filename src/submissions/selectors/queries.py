@@ -1,7 +1,8 @@
 from typing import Optional
+from types import SimpleNamespace
 from django.db.models import Prefetch
 
-from indicators.selectors.queries import get_org_effective_indicators
+from indicators.selectors.queries import get_org_effective_indicators, get_indicator_emission_value
 from submissions.models import DataSubmission, ReportingPeriod
 
 
@@ -34,6 +35,29 @@ def get_period_submissions(org, period: ReportingPeriod, pillar: Optional[str] =
     results = []
     for ind in indicators_qs:
         submission = ind.period_submissions[0] if getattr(ind, 'period_submissions', None) else None
+        # If there is no DataSubmission but the indicator code maps to an emission aggregate,
+        # synthesize a lightweight submission-like object so the existing serializers can render it.
+        if submission is None:
+            code = getattr(ind, 'code', '')
+            # emission-derived indicators handled by indicators.selectors.get_indicator_emission_value
+            em_val = get_indicator_emission_value(code, org=org, reporting_period=period)
+            if em_val and float(em_val) != 0:
+                submission = SimpleNamespace(
+                    id=None,
+                    organization=None,
+                    indicator=None,
+                    reporting_period=period,
+                    facility=None,
+                    value_number=em_val,
+                    value_text=None,
+                    value_boolean=None,
+                    metadata={},
+                    status='calculated',
+                    submitted_by=None,
+                    submitted_at=None,
+                    approved_by=None,
+                    approved_at=None,
+                )
         results.append({
             'indicator': ind,
             'is_required_effective': getattr(ind, 'is_required_effective', False),

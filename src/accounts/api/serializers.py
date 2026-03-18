@@ -100,3 +100,35 @@ class AdminCreateUserSerializer(serializers.Serializer):
             missing = [str(v) for v in value if str(v) not in found_ids]
             raise serializers.ValidationError(f"Roles not found for ids: {', '.join(missing)}")
         return roles
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Serializer for changing password from dashboard."""
+    
+    current_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={"input_type": "password"},
+        help_text="Current password for verification"
+    )
+    new_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        min_length=8,
+        style={"input_type": "password"},
+        help_text="New password (minimum 8 characters)"
+    )
+    confirm_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={"input_type": "password"},
+        help_text="Confirm new password"
+    )
+    
+    def validate(self, data):
+        """Validate that new passwords match."""
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({
+                "confirm_password": "Passwords do not match"
+            })
+        return data

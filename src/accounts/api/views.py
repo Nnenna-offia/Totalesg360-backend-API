@@ -22,6 +22,7 @@ from .serializers import (
     SignupSerializer,
     RequestOTPSerializer,
     VerifyOTPSerializer,
+    ChangePasswordSerializer,
 )
 from accounts.utils.otp import create_and_send_otp_for_user, verify_otp
 from accounts.utils.password_reset import (
@@ -744,3 +745,65 @@ class CountriesView(APIView):
         }
         
         return success_response(data=data, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    """
+    Change password for authenticated user.
+    
+    POST /api/v1/accounts/change-password/
+    
+    Request Body:
+    {
+        "current_password": "old_password",
+        "new_password": "new_password",
+        "confirm_password": "new_password"
+    }
+    
+    Response: 200 OK
+    {
+        "success": true,
+        "message": "Password changed successfully"
+    }
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": "Invalid data provided",
+                    "errors": serializer.errors,
+                    "code": "validation_error",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from accounts.services.password import change_password
+            
+            change_password(
+                user=request.user,
+                current_password=serializer.validated_data['current_password'],
+                new_password=serializer.validated_data['new_password']
+            )
+            
+            return success_response(
+                message="Password changed successfully",
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/password-change-failed",
+                    "title": "Password Change Failed",
+                    "detail": str(e),
+                    "code": "password_change_failed",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST
+            )

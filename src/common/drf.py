@@ -7,6 +7,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError, Per
 from rest_framework.response import Response
 from rest_framework import status as drf_status
 from django.conf import settings
+from http import HTTPStatus
 
 from .exceptions import DomainException
 from .api import problem_response
@@ -93,9 +94,14 @@ def custom_exception_handler(exc, context):
         else:
             message = detail
 
+        try:
+            title = HTTPStatus(status_code).phrase
+        except Exception:
+            title = "Error"
+
         problem = {
             "type": "about:blank",
-            "title": drf_status.REASON_PHRASES.get(status_code, "Error"),
+            "title": title,
             "status": status_code,
             "detail": message,
             "instance": getattr(request, "path", None),

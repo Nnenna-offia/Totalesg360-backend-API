@@ -1,12 +1,31 @@
 """Organizations API views."""
 from rest_framework.views import APIView
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from django.conf import settings
 
-from common.api import success_response
+from common.api import success_response, problem_response
+from common.permissions import HasCapability, _get_org
 from organizations.selectors.metadata import (
     get_sectors_list,
     get_primary_reporting_focus_list,
 )
+from organizations.selectors.settings import get_organization_settings, get_organization_with_settings
+from organizations.services.settings import update_general_settings, update_security_settings
+from organizations.services.profile import (
+    update_organization_profile,
+    create_business_unit,
+    update_business_unit,
+    delete_business_unit,
+)
+from .serializers import (
+    OrganizationSettingsDetailSerializer,
+    GeneralSettingsUpdateSerializer,
+    SecuritySettingsUpdateSerializer,
+    OrganizationSettingsSerializer
+)
+from .serializers import OrganizationProfileSerializer, BusinessUnitSerializer
+from organizations.models import BusinessUnit, OrganizationProfile
 
 
 class OrganizationOptionsView(APIView):
@@ -46,3 +65,368 @@ class OrganizationOptionsView(APIView):
         }
         
         return success_response(data=data, status=status.HTTP_200_OK)
+
+
+class OrganizationSettingsView(APIView):
+    """
+    Get organization settings with all related data.
+    
+    GET /api/v1/organizations/settings/
+    
+    Headers:
+        X-ORG-ID: Organization UUID
+    
+    Returns:
+        Organization details, settings, departments, and frameworks.
+        
+    Response: 200 OK
+    {
+        "success": true,
+        "data": {
+            "organization": {...},
+            "settings": {...},
+            "departments": [...],
+            "frameworks": [...]
+        }
+    }
+    """
+    
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        organization = _get_org(request)
+        
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        settings_data = get_organization_settings(str(organization.id))
+        
+        if not settings_data:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization settings not found",
+                    "detail": "Organization settings not found",
+                    "code": "org_settings_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        serializer = OrganizationSettingsDetailSerializer(settings_data)
+        return success_response(data=serializer.data, status=status.HTTP_200_OK)
+
+
+class GeneralSettingsUpdateView(APIView):
+    """
+    Update general settings for an organization.
+    
+    PATCH /api/v1/organizations/settings/general/
+    
+    Headers:
+        X-ORG-ID: Organization UUID
+    
+    Request Body:
+    {
+        "system_language": "en",
+        "timezone": "Africa/Lagos",
+        "currency": "NGN",
+        "date_format": "DD/MM/YYYY",
+        "admin_theme": "light",
+        "notifications_enabled": true,
+        "system_update_frequency": "daily",
+        "export_formats": ["pdf", "xlsx", "csv"]
+    }
+    
+    Response: 200 OK
+    {
+        "success": true,
+        "data": {...updated settings...}
+    }
+    """
+    
+    permission_classes = [IsAuthenticated, HasCapability]
+    required_capability = "org.manage"
+    
+    def patch(self, request):
+        organization = _get_org(request)
+        
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        organization = get_organization_with_settings(str(organization.id))
+        
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        serializer = GeneralSettingsUpdateSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": "Invalid data provided",
+                    "errors": serializer.errors,
+                    "code": "validation_error",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            updated_settings = update_general_settings(
+                organization=organization,
+                **serializer.validated_data
+            )
+            
+            settings_serializer = OrganizationSettingsSerializer(updated_settings)
+            return success_response(
+                data=settings_serializer.data,
+                meta={"message": "General settings updated successfully"},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/update-failed",
+                    "title": "Update Failed",
+                    "detail": str(e),
+                    "code": "update_failed",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class SecuritySettingsUpdateView(APIView):
+    """
+    Update security settings for an organization.
+    
+    PATCH /api/v1/organizations/settings/security/
+    
+    Headers:
+        X-ORG-ID: Organization UUID
+    
+    Request Body:
+    {
+        "security_checks_frequency": "daily",
+        "require_2fa": true,
+        "encrypt_stored_data": true,
+        "encryption_method": "AES-256"
+    }
+    
+    Response: 200 OK
+    {
+        "success": true,
+        "data": {...updated settings...}
+    }
+    """
+    
+    permission_classes = [IsAuthenticated, HasCapability]
+    required_capability = "org.manage"
+    
+    def patch(self, request):
+        organization = _get_org(request)
+        
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        organization = get_organization_with_settings(str(organization.id))
+        
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        serializer = SecuritySettingsUpdateSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": "Invalid data provided",
+                    "errors": serializer.errors,
+                    "code": "validation_error",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            updated_settings = update_security_settings(
+                organization=organization,
+                **serializer.validated_data
+            )
+            
+            settings_serializer = OrganizationSettingsSerializer(updated_settings)
+            return success_response(
+                data=settings_serializer.data,
+                meta={"message": "Security settings updated successfully"},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/update-failed",
+                    "title": "Update Failed",
+                    "detail": str(e),
+                    "code": "update_failed",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class OrganizationProfileView(APIView):
+    """Retrieve or update the organization's company profile (logo, CAC, locations)."""
+
+    permission_classes = [IsAuthenticated, HasCapability]
+    required_capability = "org.manage"
+
+    def patch(self, request):
+        org = _get_org(request)
+        if not org:
+            return problem_response({
+                "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                "title": "Organization not found",
+                "detail": "Organization not found or X-ORG-ID header missing",
+                "code": "org_not_found",
+            }, status_code=status.HTTP_404_NOT_FOUND)
+
+        serializer = OrganizationProfileSerializer(data=request.data)
+        if not serializer.is_valid():
+            return problem_response({
+                "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                "title": "Validation Error",
+                "detail": "Invalid data provided",
+                "errors": serializer.errors,
+                "code": "validation_error",
+            }, status_code=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            profile = update_organization_profile(org, **serializer.validated_data)
+            out = OrganizationProfileSerializer(profile)
+            return success_response(data=out.data, meta={"message": "Profile updated"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return problem_response({
+                "type": f"{settings.PROBLEM_BASE_URL}/update-failed",
+                "title": "Update Failed",
+                "detail": str(e),
+                "code": "update_failed",
+            }, status_code=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        org = _get_org(request)
+        if not org:
+            return problem_response({
+                "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                "title": "Organization not found",
+                "detail": "Organization not found or X-ORG-ID header missing",
+                "code": "org_not_found",
+            }, status_code=status.HTTP_404_NOT_FOUND)
+
+        profile, _ = OrganizationProfile.objects.get_or_create(organization=org)
+        out = OrganizationProfileSerializer(profile)
+        return success_response(data=out.data, status=status.HTTP_200_OK)
+
+
+class BusinessUnitListCreateView(APIView):
+    permission_classes = [IsAuthenticated, HasCapability]
+    required_capability = "org.manage"
+
+    def get(self, request):
+        org = _get_org(request)
+        if not org:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Org not found","detail": "Organization not found","code": "org_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        units = org.business_units.all()
+        serializer = BusinessUnitSerializer(units, many=True)
+        return success_response(data=serializer.data)
+
+    def post(self, request):
+        org = _get_org(request)
+        if not org:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Org not found","detail": "Organization not found","code": "org_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        serializer = BusinessUnitSerializer(data=request.data)
+        if not serializer.is_valid():
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/validation-error","title": "Validation Error","detail": "Invalid data","errors": serializer.errors,"code": "validation_error"}, status_code=status.HTTP_400_BAD_REQUEST)
+        bu = create_business_unit(org, name=serializer.validated_data['name'])
+        out = BusinessUnitSerializer(bu)
+        return success_response(data=out.data, status=status.HTTP_201_CREATED)
+
+
+class BusinessUnitDetailView(APIView):
+    permission_classes = [IsAuthenticated, HasCapability]
+    required_capability = "org.manage"
+
+    def get_object(self, org, pk):
+        try:
+            return org.business_units.get(id=pk)
+        except BusinessUnit.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        org = _get_org(request)
+        if not org:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Org not found","detail": "Organization not found","code": "org_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        bu = self.get_object(org, pk)
+        if not bu:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Business unit not found","detail": "Business unit not found","code": "bu_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        return success_response(data=BusinessUnitSerializer(bu).data)
+
+    def patch(self, request, pk):
+        org = _get_org(request)
+        if not org:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Org not found","detail": "Organization not found","code": "org_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        bu = self.get_object(org, pk)
+        if not bu:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Business unit not found","detail": "Business unit not found","code": "bu_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        serializer = BusinessUnitSerializer(data=request.data)
+        if not serializer.is_valid():
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/validation-error","title": "Validation Error","detail": "Invalid data","errors": serializer.errors,"code": "validation_error"}, status_code=status.HTTP_400_BAD_REQUEST)
+        bu = update_business_unit(bu, name=serializer.validated_data['name'])
+        return success_response(data=BusinessUnitSerializer(bu).data)
+
+    def delete(self, request, pk):
+        org = _get_org(request)
+        if not org:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Org not found","detail": "Organization not found","code": "org_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        bu = self.get_object(org, pk)
+        if not bu:
+            return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Business unit not found","detail": "Business unit not found","code": "bu_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
+        delete_business_unit(bu)
+        return success_response(data={})

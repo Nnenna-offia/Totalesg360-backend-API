@@ -59,3 +59,39 @@ def get_org_effective_indicators(org):
     )
 
     return qs
+
+
+def get_indicator_emission_value(indicator_code: str, org=None, reporting_period=None):
+    """Return emission-derived value for specific indicator codes.
+
+    Supported codes (convention):
+      - total_scope1_emissions
+      - total_scope2_emissions
+      - total_scope3_emissions
+      - total_emissions
+
+    Returns a numeric total (0 if none).
+    """
+    if reporting_period is None or org is None:
+        return 0
+
+    # Lazy import to avoid circular imports at module load
+    from emissions.selectors.queries import (
+        get_scope1_emissions,
+        get_scope2_emissions,
+        get_scope3_emissions,
+        get_total_emissions,
+    )
+
+    code = (indicator_code or '').lower().strip()
+    if code == 'total_scope1_emissions':
+        return get_scope1_emissions(org, reporting_period)
+    if code == 'total_scope2_emissions':
+        return get_scope2_emissions(org, reporting_period)
+    if code == 'total_scope3_emissions':
+        return get_scope3_emissions(org, reporting_period)
+    if code in ('total_emissions', 'total_scope_emissions'):
+        return get_total_emissions(org, reporting_period)
+
+    # Unknown indicator code: default to 0
+    return 0
