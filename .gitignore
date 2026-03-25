@@ -10,10 +10,12 @@ __pycache__/
 .idea/
 .vscode/
 .env
-src_images/
 /.postman/
 /postman/
 ./logs/
 .secrets*
 event.json
 write_secret.sh
+src_images/
+./images/
+venv/

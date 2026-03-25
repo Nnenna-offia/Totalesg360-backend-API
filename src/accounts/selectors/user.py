@@ -79,11 +79,13 @@ def get_user_memberships_with_roles(user: User) -> List[Dict[str, Any]]:
     ).prefetch_related(
         'role__role_capabilities__capability'
     )
-    
-    result = []
+
+    # Aggregate by organization to avoid duplicated organization blocks
+    grouped = {}
     for membership in memberships:
-        # Get capabilities for this role through role_capabilities junction
-        capabilities = [
+        org_id = str(membership.organization.id)
+        # Build capability list for this role
+        role_caps = [
             {
                 "code": rc.capability.code,
                 "name": rc.capability.name,
@@ -91,25 +93,64 @@ def get_user_memberships_with_roles(user: User) -> List[Dict[str, Any]]:
             }
             for rc in membership.role.role_capabilities.select_related('capability')
         ]
-        
+
+        if org_id not in grouped:
+            grouped[org_id] = {
+                "organization": {
+                    "id": org_id,
+                    "name": membership.organization.name,
+                    "sector": membership.organization.sector,
+                    "country": str(membership.organization.country.code) if membership.organization.country else None,
+                },
+                "roles": [],
+                "capabilities_set": {},
+                "facilities": [],
+                "is_active": False,
+                "joined_at": None,
+            }
+
+        g = grouped[org_id]
+
+        # append role
+        g["roles"].append({"code": membership.role.code, "name": membership.role.name})
+
+        # add capabilities into a dict keyed by code to dedupe while preserving a sample name/desc
+        for c in role_caps:
+            if c["code"] not in g["capabilities_set"]:
+                g["capabilities_set"][c["code"]] = c
+
+        # facilities (may be None)
+        if membership.facility:
+            fac = {"id": str(membership.facility.id), "name": membership.facility.name}
+            if fac not in g["facilities"]:
+                g["facilities"].append(fac)
+
+        # compute is_active if any membership is active
+        g["is_active"] = g["is_active"] or bool(membership.is_active)
+
+        # joined_at: keep earliest join date if present
+        try:
+            j = membership.joined_at
+            if j:
+                iso = j.isoformat()
+                if not g["joined_at"] or iso < g["joined_at"]:
+                    g["joined_at"] = iso
+        except Exception:
+            pass
+
+    # Build final list converting capability dict back to list and removing helper keys
+    result = []
+    for org_id, g in grouped.items():
+        caps = list(g["capabilities_set"].values())
         result.append({
-            "organization": {
-                "id": str(membership.organization.id),
-                "name": membership.organization.name,
-                "sector": membership.organization.sector,
-                "country": str(membership.organization.country.code) if membership.organization.country else None,
-            },
-            "role": {
-                "code": membership.role.code,
-                "name": membership.role.name,
-            },
-            "capabilities": capabilities,
-            "facility": {
-                "id": str(membership.facility.id),
-                "name": membership.facility.name,
-            } if membership.facility else None,
-            "is_active": membership.is_active,
-            "joined_at": membership.joined_at.isoformat(),
+            "organization": g["organization"],
+            "role": g["roles"][0] if g["roles"] else None,
+            "roles": g["roles"],
+            "capabilities": caps,
+            "facility": g["facilities"][0] if g["facilities"] else None,
+            "facilities": g["facilities"] if g["facilities"] else None,
+            "is_active": g["is_active"],
+            "joined_at": g["joined_at"],
         })
-    
+
     return result
