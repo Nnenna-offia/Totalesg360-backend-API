@@ -4,9 +4,9 @@ from .models import ReportingPeriod
 
 @admin.register(ReportingPeriod)
 class ReportingPeriodAdmin(admin.ModelAdmin):
-	list_display = ("organization", "year", "quarter", "status", "opened_at", "locked_at")
-	list_filter = ("status", "organization")
-	search_fields = ("organization__name",)
+	list_display = ("organization", "name", "period_type", "start_date", "end_date", "status", "opened_at", "locked_at")
+	list_filter = ("status", "period_type", "organization")
+	search_fields = ("organization__name", "name")
     
 from .models import DataSubmission
 

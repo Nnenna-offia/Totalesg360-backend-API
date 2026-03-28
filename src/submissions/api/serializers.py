@@ -102,5 +102,56 @@ class IndicatorSummarySerializer(serializers.Serializer):
 class ReportingPeriodSerializer(serializers.ModelSerializer):
 	class Meta:
 		model = ReportingPeriod
-		fields = ["id", "organization", "year", "quarter", "status", "opened_at", "locked_at", "is_active"]
+		fields = [
+			"id",
+			"organization",
+			"name",
+			"period_type",
+			"start_date",
+			"end_date",
+			"status",
+			"opened_at",
+			"locked_at",
+			"is_active"
+		]
 		read_only_fields = ["id", "organization", "opened_at", "locked_at"]
+	
+	def validate(self, data):
+		"""Validate that start_date is before end_date"""
+		start_date = data.get('start_date')
+		end_date = data.get('end_date')
+		
+		if start_date and end_date and start_date >= end_date:
+			raise serializers.ValidationError("start_date must be before end_date")
+		
+		return data
+
+
+class ReportingPeriodGenerationSerializer(serializers.Serializer):
+	"""
+	Serializer for generating reporting periods automatically.
+	Accepts year and period_type, then auto-generates all periods.
+	"""
+	year = serializers.IntegerField(min_value=2000, max_value=2100)
+	period_type = serializers.ChoiceField(
+		choices=[
+			'DAILY',
+			'WEEKLY',
+			'BI_WEEKLY',
+			'MONTHLY',
+			'QUARTERLY',
+			'SEMI_ANNUAL',
+			'ANNUAL'
+		]
+	)
+	
+	def validate_year(self, value):
+		"""Ensure year is reasonable"""
+		from datetime import datetime
+		current_year = datetime.now().year
+		if value < current_year - 10:
+			raise serializers.ValidationError(f"Year must be {current_year - 10} or later")
+		if value > current_year + 10:
+			raise serializers.ValidationError(f"Year must be {current_year + 10} or earlier")
+		return value
+

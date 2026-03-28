@@ -41,8 +41,10 @@ class GoalCreateView(APIView):
             organization=org,
             indicator_id=data.get('indicator_id'),
             facility_id=data.get('facility_id'),
+            department_id=data.get('department_id'),
             name=data.get('name', 'Untitled'),
             description=data.get('description', ''),
+            reporting_frequency=data.get('reporting_frequency'),
             baseline_year=data.get('baseline_year'),
             baseline_value=data.get('baseline_value'),
             target_year=data.get('target_year'),
@@ -107,6 +109,7 @@ class GoalListView(APIView):
                 facility_id=facility_id,
                 name=data.get('name', 'Untitled'),
                 description=data.get('description', ''),
+                reporting_frequency=data.get('reporting_frequency'),
                 baseline_year=data.get('baseline_year'),
                 baseline_value=data.get('baseline_value'),
                 target_year=data.get('target_year'),
@@ -156,7 +159,7 @@ class GoalDetailView(APIView):
         if not goal:
             return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/not-found", 'title': 'Goal not found', 'detail': 'goal not found'}, status.HTTP_404_NOT_FOUND)
         # apply allowed updates
-        for fld in ('name', 'description', 'baseline_year', 'baseline_value', 'target_year', 'target_value', 'direction', 'status'):
+        for fld in ('name', 'description', 'reporting_frequency', 'baseline_year', 'baseline_value', 'target_year', 'target_value', 'direction', 'status'):
             if fld in data:
                 setattr(goal, fld, data.get(fld))
         goal.save()

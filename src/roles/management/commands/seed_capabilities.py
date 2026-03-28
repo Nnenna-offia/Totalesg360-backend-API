@@ -8,6 +8,7 @@ DEFAULT_CAPABILITIES = [
     ('org.invite_members', 'Invite Members', 'Invite and manage organization members'),
     ('org.manage_facilities', 'Manage Facilities', 'Create/update organization facilities'),
     ('org.view_members', 'View Members', 'View organization membership list'),
+    ('department.manage', 'Manage Departments', 'Create/update/delete organization departments'),
 
     # Activity
     ('activity_type.view', 'View Activity Types', 'View activity type catalog'),

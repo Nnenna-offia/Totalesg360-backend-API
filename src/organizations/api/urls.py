@@ -10,6 +10,8 @@ from .views import (
     OrganizationProfileView,
     BusinessUnitListCreateView,
     BusinessUnitDetailView,
+    DepartmentListCreateView,
+    DepartmentDetailView,
 )
 
 app_name = "organizations"
@@ -22,4 +24,6 @@ urlpatterns = [
     path("profile/", OrganizationProfileView.as_view(), name="settings-profile"),
     path("business-units/", BusinessUnitListCreateView.as_view(), name="business-units"),
     path("business-units/<uuid:pk>/", BusinessUnitDetailView.as_view(), name="business-unit-detail"),
-]
+    path("departments/", DepartmentListCreateView.as_view(), name="departments"),
+    path("departments/<uuid:department_id>/", DepartmentDetailView.as_view(), name="department-detail"),
+    ]

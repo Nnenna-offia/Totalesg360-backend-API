@@ -13,6 +13,15 @@ class TargetGoal(BaseModel):
         COMPLETED = 'completed', 'Completed'
         ARCHIVED = 'archived', 'Archived'
 
+    class ReportingFrequency(models.TextChoices):
+        DAILY = "DAILY", "Daily"
+        WEEKLY = "WEEKLY", "Weekly"
+        BI_WEEKLY = "BI_WEEKLY", "Bi-Weekly"
+        MONTHLY = "MONTHLY", "Monthly"
+        QUARTERLY = "QUARTERLY", "Quarterly"
+        SEMI_ANNUAL = "SEMI_ANNUAL", "Semi-Annual"
+        ANNUAL = "ANNUAL", "Annual"
+
     organization = models.ForeignKey(
         'organizations.Organization', on_delete=models.CASCADE, related_name='target_goals'
     )
@@ -23,8 +32,21 @@ class TargetGoal(BaseModel):
         'organizations.Facility', null=True, blank=True, on_delete=models.SET_NULL, related_name='target_goals'
     )
 
+    department = models.ForeignKey(
+        'organizations.Department', null=True, blank=True, on_delete=models.SET_NULL, related_name='target_goals',
+        help_text="Department responsible for this target (optional)"
+    )
+
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+
+    reporting_frequency = models.CharField(
+        max_length=20,
+        choices=ReportingFrequency.choices,
+        default=ReportingFrequency.ANNUAL,
+        db_index=True,
+        help_text="Reporting frequency for this target (DAILY, WEEKLY, BI_WEEKLY, MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL)"
+    )
 
     baseline_year = models.IntegerField()
     baseline_value = models.FloatField()

@@ -3,14 +3,17 @@ from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 
 from common.api import success_response, problem_response
-from common.permissions import HasCapability, _get_org
+from common.permissions import HasCapability, IsOrgMember, _get_org
 from organizations.selectors.metadata import (
     get_sectors_list,
     get_primary_reporting_focus_list,
 )
 from organizations.selectors.settings import get_organization_settings, get_organization_with_settings
+from organizations.selectors.department import get_organization_departments, get_department_by_id
 from organizations.services.settings import update_general_settings, update_security_settings
 from organizations.services.profile import (
     update_organization_profile,
@@ -18,6 +21,8 @@ from organizations.services.profile import (
     update_business_unit,
     delete_business_unit,
 )
+from organizations.models import Department
+
 from .serializers import (
     OrganizationSettingsDetailSerializer,
     GeneralSettingsUpdateSerializer,
@@ -430,3 +435,214 @@ class BusinessUnitDetailView(APIView):
             return problem_response({"type": f"{settings.PROBLEM_BASE_URL}/not-found","title": "Business unit not found","detail": "Business unit not found","code": "bu_not_found"}, status_code=status.HTTP_404_NOT_FOUND)
         delete_business_unit(bu)
         return success_response(data={})
+
+class DepartmentListCreateView(APIView):
+    """
+    List and create departments for an organization.
+    
+    GET /api/v1/organizations/departments/ - List departments
+    POST /api/v1/organizations/departments/ - Create department
+    """
+    permission_classes = [IsAuthenticated, IsOrgMember]
+    
+    def check_permissions(self, request):
+        # For POST, add capability check
+        if request.method == 'POST':
+            self.required_capability = 'department.manage'
+            self.permission_classes = [IsAuthenticated, IsOrgMember, HasCapability]
+        else:
+            self.permission_classes = [IsAuthenticated, IsOrgMember]
+        super().check_permissions(request)
+    
+    def get(self, request):
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        departments = get_organization_departments(org, active_only=True)
+        from organizations.api.serializers import DepartmentSerializer
+        serializer = DepartmentSerializer(departments, many=True)
+        return success_response(data=serializer.data)
+    
+    def post(self, request):
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        from organizations.api.serializers import DepartmentSerializer
+        serializer = DepartmentSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": serializer.errors,
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            dept = serializer.save(organization=org)
+            return success_response(
+                data=DepartmentSerializer(dept).data,
+                status=status.HTTP_201_CREATED
+            )
+        except IntegrityError as e:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/duplicate-resource",
+                    "title": "Duplicate Department",
+                    "detail": f"A department with this name already exists in your organization",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class DepartmentDetailView(APIView):
+    """
+    Retrieve, update, and delete a specific department.
+    
+    GET /api/v1/organizations/departments/{id}/
+    PATCH /api/v1/organizations/departments/{id}/
+    DELETE /api/v1/organizations/departments/{id}/
+    """
+    permission_classes = [IsAuthenticated, IsOrgMember]
+    
+    def get_object(self, org, department_id):
+        return get_department_by_id(org, department_id)
+    
+    def check_permissions(self, request):
+        # For PATCH and DELETE, add capability check
+        if request.method in ['PATCH', 'DELETE']:
+            self.required_capability = 'department.manage'
+            self.permission_classes = [IsAuthenticated, IsOrgMember, HasCapability]
+        else:
+            self.permission_classes = [IsAuthenticated, IsOrgMember]
+        super().check_permissions(request)
+    
+    def get(self, request, department_id):
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        dept = self.get_object(org, department_id)
+        if not dept:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Department not found",
+                    "detail": "Department not found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        from organizations.api.serializers import DepartmentSerializer
+        serializer = DepartmentSerializer(dept)
+        return success_response(data=serializer.data)
+    
+    def patch(self, request, department_id):
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        dept = self.get_object(org, department_id)
+        if not dept:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Department not found",
+                    "detail": "Department not found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        from organizations.api.serializers import DepartmentSerializer
+        serializer = DepartmentSerializer(dept, data=request.data, partial=True)
+        
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": serializer.errors,
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            updated_dept = serializer.save()
+            return success_response(data=DepartmentSerializer(updated_dept).data)
+        except IntegrityError:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/duplicate-resource",
+                    "title": "Duplicate Department",
+                    "detail": "A department with this name already exists in your organization",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+    
+    def delete(self, request, department_id):
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        dept = self.get_object(org, department_id)
+        if not dept:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Department not found",
+                    "detail": "Department not found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        try:
+            dept.delete()
+            return success_response(data={}, status=status.HTTP_204_NO_CONTENT)
+        except DjangoValidationError as e:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/conflict",
+                    "title": "Conflict",
+                    "detail": str(e),
+                },
+                status_code=status.HTTP_409_CONFLICT,
+            )

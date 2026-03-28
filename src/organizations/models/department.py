@@ -1,5 +1,6 @@
 """Department model for organizational structure."""
 from django.db import models
+from django.conf import settings
 from common.models import BaseModel
 from .organization import Organization
 
@@ -31,6 +32,15 @@ class Department(BaseModel):
         blank=True,
         help_text="Department description"
     )
+
+    head = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="departments_led",
+        help_text="Head of department (optional)"
+    )
     
     is_active = models.BooleanField(
         default=True,
@@ -39,11 +49,13 @@ class Department(BaseModel):
     
     class Meta:
         db_table = "organizations_department"
+        app_label = "organizations"
         verbose_name = "Department"
         verbose_name_plural = "Departments"
         unique_together = [["organization", "name"]]
         indexes = [
             models.Index(fields=["organization", "is_active"]),
+            models.Index(fields=["organization"]),
         ]
     
     def __str__(self):

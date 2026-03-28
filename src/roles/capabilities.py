@@ -6,6 +6,7 @@ class Capabilities:
     ORG_INVITE_MEMBERS = "org.invite_members"
     ORG_MANAGE_FACILITIES = "org.manage_facilities"
     ORG_VIEW_MEMBERS = "org.view_members"
+    DEPARTMENT_MANAGE = "department.manage"
 
     # Activity capabilities
     ACTIVITY_TYPE_VIEW = "activity_type.view"

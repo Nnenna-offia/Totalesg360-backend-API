@@ -5,6 +5,7 @@ ROLE_CAPABILITIES = {
         Capabilities.ORG_MANAGE,
         Capabilities.ORG_INVITE_MEMBERS,
         Capabilities.ORG_MANAGE_FACILITIES,
+        Capabilities.DEPARTMENT_MANAGE,
         Capabilities.MANAGE_PERIOD,
 
         Capabilities.ACTIVITY_TYPE_VIEW,

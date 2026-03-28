@@ -11,16 +11,48 @@ class ReportingPeriod(BaseModel):
         LOCKED = "LOCKED", "Locked"
         SUBMITTED = "SUBMITTED", "Submitted"
 
+    class PeriodType(models.TextChoices):
+        DAILY = "DAILY", "Daily"
+        WEEKLY = "WEEKLY", "Weekly"
+        BI_WEEKLY = "BI_WEEKLY", "Bi-Weekly"
+        MONTHLY = "MONTHLY", "Monthly"
+        QUARTERLY = "QUARTERLY", "Quarterly"
+        SEMI_ANNUAL = "SEMI_ANNUAL", "Semi-Annual"
+        ANNUAL = "ANNUAL", "Annual"
+        CUSTOM = "CUSTOM", "Custom"
+
     organization = models.ForeignKey(
         "organizations.Organization",
         on_delete=models.CASCADE,
         related_name="reporting_periods",
     )
-    year = models.IntegerField(db_index=True)
-    quarter = models.IntegerField(null=True, blank=True)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN, db_index=True)
+
+    name = models.CharField(
+        max_length=120,
+        help_text="Human readable label e.g. Week 1 2025, Jan 2025, Q1 2025"
+    )
+
+    period_type = models.CharField(
+        max_length=20,
+        choices=PeriodType.choices,
+        db_index=True
+    )
+
+    start_date = models.DateField()
+
+    end_date = models.DateField()
+
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.OPEN,
+        db_index=True
+    )
+
     opened_at = models.DateTimeField(default=timezone.now)
+
     locked_at = models.DateTimeField(null=True, blank=True)
+
     locked_by = models.ForeignKey(
         "accounts.User",
         on_delete=models.SET_NULL,
@@ -28,18 +60,34 @@ class ReportingPeriod(BaseModel):
         blank=True,
         related_name="periods_locked",
     )
+
     is_active = models.BooleanField(default=True)
 
     class Meta:
         db_table = "submissions_reportingperiod"
         app_label = "submissions"
-        unique_together = (("organization", "year", "quarter"),)
-        indexes = [models.Index(fields=["organization", "status"])]
+        unique_together = [("organization", "name")]
+        indexes = [
+            models.Index(fields=["organization", "status"]),
+            models.Index(fields=["organization", "period_type"]),
+            models.Index(fields=["start_date", "end_date"]),
+        ]
 
     def clean(self):
-        # Ensure quarter is between 1 and 4 if provided
-        if self.quarter is not None and not (1 <= self.quarter <= 4):
-            raise ValidationError("quarter must be between 1 and 4")
+        # Validate start_date is before end_date
+        if self.start_date and self.end_date and self.start_date >= self.end_date:
+            raise ValidationError("Start date must be before end date")
+
+        # Check for overlapping periods
+        if self.organization and self.start_date and self.end_date:
+            overlapping = ReportingPeriod.objects.filter(
+                organization=self.organization,
+                start_date__lte=self.end_date,
+                end_date__gte=self.start_date
+            ).exclude(id=self.id)
+
+            if overlapping.exists():
+                raise ValidationError("Reporting period overlaps with existing period")
 
     def can_edit(self):
         return self.status == self.Status.OPEN
@@ -64,5 +112,4 @@ class ReportingPeriod(BaseModel):
         return super().delete(*args, **kwargs)
 
     def __str__(self):
-        q = f"Q{self.quarter}" if self.quarter else ""
-        return f"{self.organization} - {self.year} {q} ({self.get_status_display()})"
+        return f"{self.organization} - {self.name} ({self.get_status_display()})"

@@ -14,7 +14,8 @@ from submissions.selectors.queries import get_period_submissions
 from submissions.services.core import fetch_period_submissions
 from rest_framework.pagination import PageNumberPagination
 from submissions.models import ReportingPeriod
-from submissions.api.serializers import ReportingPeriodSerializer
+from submissions.api.serializers import ReportingPeriodSerializer, ReportingPeriodGenerationSerializer
+from submissions.services.period_generation import generate_reporting_periods
 from rest_framework.permissions import IsAdminUser
 
 
@@ -126,7 +127,7 @@ class ReportingPeriodListCreateAPIView(APIView):
 
 	def get(self, request):
 		org, _ = get_org_and_membership(request=request)
-		qs = ReportingPeriod.objects.filter(organization=org).order_by('-year', '-quarter')
+		qs = ReportingPeriod.objects.filter(organization=org).order_by('-start_date', 'name')
 
 		# Paginate reporting periods
 		from rest_framework.pagination import PageNumberPagination
@@ -169,36 +170,102 @@ class ReportingPeriodListCreateAPIView(APIView):
 		return [IsOrgMember(), HasCapability()]
 
 	def post(self, request):
+		"""
+		Auto-generate reporting periods for a year.
+		
+		Accepts:
+		{
+		  "year": 2025,
+		  "period_type": "QUARTERLY"
+		}
+		
+		Generates all periods for that year (e.g., Q1-Q4 for QUARTERLY).
+		Prevents duplicates - if periods already exist, returns existing ones.
+		"""
 		org, _ = get_org_and_membership(request=request)
-		serializer = ReportingPeriodSerializer(data=request.data)
+		serializer = ReportingPeriodGenerationSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
 		
+		year = serializer.validated_data['year']
+		period_type = serializer.validated_data['period_type']
+		
+		# Check if periods already exist for this org, year, and type
+		existing_periods = ReportingPeriod.objects.filter(
+			organization=org,
+			period_type=period_type,
+			start_date__year=year
+		)
+		
+		if existing_periods.exists():
+			# Return existing periods
+			out = ReportingPeriodSerializer(existing_periods, many=True)
+			return success_response(
+				data=out.data,
+				meta={
+					"message": f"{period_type} periods for {year} already exist",
+					"count": existing_periods.count(),
+					"created": False
+				},
+				status=status.HTTP_200_OK
+			)
+		
+		# Generate new periods
 		try:
-			rp = serializer.save(organization=org)
+			results = generate_reporting_periods(
+				organization=org,
+				year=year,
+				period_types=[period_type],
+				save=True
+			)
+			
+			generated_periods = results.get(period_type, [])
+			
+			if not generated_periods:
+				return problem_response(
+					{
+						"type": f"{settings.PROBLEM_BASE_URL}/generation-failed",
+						"title": "Period generation failed",
+						"status": status.HTTP_500_INTERNAL_SERVER_ERROR,
+						"detail": f"Failed to generate {period_type} periods for {year}",
+						"instance": getattr(request, "path", None),
+					},
+					status.HTTP_500_INTERNAL_SERVER_ERROR
+				)
+			
+			# Fetch the created periods from database to get complete data
+			created_periods = ReportingPeriod.objects.filter(
+				organization=org,
+				period_type=period_type,
+				start_date__year=year
+			)
+			
+			out = ReportingPeriodSerializer(created_periods, many=True)
+			
+			return success_response(
+				data=out.data,
+				meta={
+					"message": f"Successfully generated {len(generated_periods)} {period_type} periods for {year}",
+					"count": len(generated_periods),
+					"created": True
+				},
+				status=status.HTTP_201_CREATED
+			)
+			
 		except Exception as exc:
+			from django.core.exceptions import ValidationError as DjangoValidationError
 			from django.db import IntegrityError
-			if isinstance(exc, IntegrityError):
-				# Extract year/quarter from request data for better error message
-				year = request.data.get('year', 'N/A')
-				quarter = request.data.get('quarter', 'N/A')
-				detail = f"A reporting period for year {year}"
-				if quarter and quarter != 'N/A':
-					detail += f", quarter {quarter}"
-				detail += " already exists for this organization."
-				
+			
+			if isinstance(exc, (DjangoValidationError, IntegrityError)):
+				detail = str(exc)
 				problem = {
-					"type": f"{settings.PROBLEM_BASE_URL}/duplicate-period",
-					"title": "Duplicate reporting period",
+					"type": f"{settings.PROBLEM_BASE_URL}/generation-error",
+					"title": "Period generation error",
 					"status": status.HTTP_400_BAD_REQUEST,
 					"detail": detail,
 					"instance": getattr(request, "path", None),
 				}
 				return problem_response(problem, status.HTTP_400_BAD_REQUEST)
 			raise
-		
-		out = ReportingPeriodSerializer(rp)
-		
-		return success_response(data=out.data, status=status.HTTP_201_CREATED)
 
 
 class FinalizePeriodAPIView(APIView):
