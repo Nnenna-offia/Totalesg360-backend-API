@@ -246,6 +246,13 @@ SESSION_COOKIE_SAMESITE = "Lax"
 # ---------------------------
 # Logging Configuration
 # ---------------------------
+# Ensure logs directory exists before configuring logging
+import logging
+import logging.handlers
+
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -284,7 +291,7 @@ LOGGING = {
         "file": {
             "level": "INFO",
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": os.path.join(BASE_DIR, "logs", "totalesg.log"),
+            "filename": str(LOG_DIR / "totalesg.log"),
             "maxBytes": 10 * 1024 * 1024,  # 10MB
             "backupCount": 5,
             "formatter": "verbose",
@@ -292,7 +299,7 @@ LOGGING = {
         "error_file": {
             "level": "ERROR",
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": os.path.join(BASE_DIR, "logs", "errors.log"),
+            "filename": str(LOG_DIR / "errors.log"),
             "maxBytes": 10 * 1024 * 1024,  # 10MB
             "backupCount": 5,
             "formatter": "verbose",
