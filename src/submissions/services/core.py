@@ -16,10 +16,22 @@ CAP_APPROVE = "approve_submission"
 
 
 def _user_has_capability(user, org, cap_code: str) -> bool:
-    membership = get_user_membership_for_org(user, org)
-    if not membership or not membership.role:
+    # A user may have multiple memberships/roles within the same organization.
+    # Consider all active memberships for the org and return True if any of
+    # the membership roles grant the requested capability.
+    if not user or not org:
         return False
-    return membership.role.role_capabilities.filter(capability__code=cap_code).exists()
+    memberships = user.memberships.filter(organization=org, is_active=True).select_related('role')
+    if not memberships.exists():
+        return False
+
+    # Check across all roles for the capability
+    role_ids = [m.role_id for m in memberships if m.role_id]
+    if not role_ids:
+        return False
+
+    from roles.models import RoleCapability
+    return RoleCapability.objects.filter(role_id__in=role_ids, capability__code=cap_code, is_active=True).exists()
 
 
 def _validate_indicator_active_for_org(org, indicator: Indicator) -> bool:

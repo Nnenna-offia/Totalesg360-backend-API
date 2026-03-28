@@ -40,3 +40,5 @@ class Capabilities:
 
     # backwards-compat / system operations
     MANAGE_ROLES = "manage_roles"
+    # Reporting period management
+    MANAGE_PERIOD = "manage_period"

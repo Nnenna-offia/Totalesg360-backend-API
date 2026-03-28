@@ -54,10 +54,6 @@ class IsOrgMember(permissions.BasePermission):
 
 
 class HasCapability(permissions.BasePermission):
-    """Check that the resolved membership's role has a capability matching
-    `view.required_capability` (string). If the view does not define
-    `required_capability`, this permission allows access.
-    """
 
     message = "User lacks required capability for this organization."
 
@@ -65,20 +61,21 @@ class HasCapability(permissions.BasePermission):
         required = getattr(view, "required_capability", None)
         if not required:
             return True
+
         org = _get_org(request)
         if not org:
             return False
+
         user = getattr(request, "user", None)
-        if not user or not getattr(user, "is_authenticated", False):
+        if not user or not user.is_authenticated:
             return False
-        membership = (
-            user.memberships.filter(organization=org, is_active=True)
-            .select_related("role")
-            .first()
-        )
-        if not membership or not membership.role:
-            return False
-        return membership.role.role_capabilities.filter(capability__code=required).exists()
+
+        return user.memberships.filter(
+            organization=org,
+            is_active=True,
+            role__role_capabilities__capability__code=required,
+            role__role_capabilities__is_active=True
+        ).exists()
 
 
 class HasGlobalCapability(permissions.BasePermission):

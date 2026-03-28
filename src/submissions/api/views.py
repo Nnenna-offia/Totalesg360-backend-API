@@ -172,8 +172,32 @@ class ReportingPeriodListCreateAPIView(APIView):
 		org, _ = get_org_and_membership(request=request)
 		serializer = ReportingPeriodSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
-		rp = serializer.save(organization=org)
+		
+		try:
+			rp = serializer.save(organization=org)
+		except Exception as exc:
+			from django.db import IntegrityError
+			if isinstance(exc, IntegrityError):
+				# Extract year/quarter from request data for better error message
+				year = request.data.get('year', 'N/A')
+				quarter = request.data.get('quarter', 'N/A')
+				detail = f"A reporting period for year {year}"
+				if quarter and quarter != 'N/A':
+					detail += f", quarter {quarter}"
+				detail += " already exists for this organization."
+				
+				problem = {
+					"type": f"{settings.PROBLEM_BASE_URL}/duplicate-period",
+					"title": "Duplicate reporting period",
+					"status": status.HTTP_400_BAD_REQUEST,
+					"detail": detail,
+					"instance": getattr(request, "path", None),
+				}
+				return problem_response(problem, status.HTTP_400_BAD_REQUEST)
+			raise
+		
 		out = ReportingPeriodSerializer(rp)
+		
 		return success_response(data=out.data, status=status.HTTP_201_CREATED)
 
 
