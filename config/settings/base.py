@@ -250,8 +250,9 @@ SESSION_COOKIE_SAMESITE = "Lax"
 import logging
 import logging.handlers
 
-LOG_DIR = BASE_DIR / "logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+# Create logs directory with absolute path
+LOG_DIR = os.path.join(str(BASE_DIR), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
 LOGGING = {
     "version": 1,
@@ -291,7 +292,7 @@ LOGGING = {
         "file": {
             "level": "INFO",
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": str(LOG_DIR / "totalesg.log"),
+            "filename": os.path.join(LOG_DIR, "totalesg.log"),
             "maxBytes": 10 * 1024 * 1024,  # 10MB
             "backupCount": 5,
             "formatter": "verbose",
@@ -299,7 +300,7 @@ LOGGING = {
         "error_file": {
             "level": "ERROR",
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": str(LOG_DIR / "errors.log"),
+            "filename": os.path.join(LOG_DIR, "errors.log"),
             "maxBytes": 10 * 1024 * 1024,  # 10MB
             "backupCount": 5,
             "formatter": "verbose",
