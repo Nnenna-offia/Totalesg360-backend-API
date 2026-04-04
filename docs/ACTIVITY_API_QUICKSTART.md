@@ -35,7 +35,7 @@ curl -X GET http://localhost:8000/api/v1/activities/types/ \
         "name": "Scope 2 Emissions",
         "collection_method": "activity"
       },
-      "category": "energy",
+      
       "is_active": true
     }
   ]
@@ -129,7 +129,7 @@ curl -X POST http://localhost:8000/api/v1/activities/submissions/bulk/create/ \
 ### Activity Types
 ```
 ?scope=SCOPE_1              # Filter by scope
-?category=energy            # Filter by category
+ 
 ?is_active=true             # Only active types
 ?has_indicator=true         # Only types with indicators
 ?search=electricity         # Search in name/description

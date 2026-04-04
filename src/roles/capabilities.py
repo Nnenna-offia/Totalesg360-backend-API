@@ -35,6 +35,8 @@ class Capabilities:
     # Platform admin (global)
     SCOPE_MANAGE = "scope.manage"
     ACTIVITY_TYPE_MANAGE = "activity_type.manage"
+    # Legacy/compatibility capability used in views
+    MANAGE_ACTIVITY_TYPES = "manage_activity_types"
     EMISSION_FACTOR_MANAGE = "emission_factor.manage"
     INDICATOR_MANAGE = "indicator.manage"
     FRAMEWORK_MANAGE = "framework.manage"

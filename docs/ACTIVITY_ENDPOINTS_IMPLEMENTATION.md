@@ -90,11 +90,11 @@ GET    /api/v1/activities/analytics/comparison/       # Period comparison
 - Proper validation and error handling
 
 ### ✅ Advanced Filtering
-- ActivityTypes: filter by scope, category, active status, indicator linkage, search
+ ActivityTypes: filter by scope, active status, indicator linkage, search
 - Submissions: filter by period, activity type, facility, creator, scope
 - Analytics: filter by date range, scope, activity type, facility, period
-
-### ✅ Aggregations & Analytics
+ - [ ] List activity types without filters
+ - [ ] Filter by scope, active status
 - Period-scoped submissions with summary stats (count, total value, by scope)
 - Monthly trends with time-series data
 - Facility-level breakdowns with scope aggregations
@@ -123,7 +123,7 @@ GET    /api/v1/activities/analytics/comparison/       # Period comparison
 
 ### Activity Types
 - [ ] List activity types without filters
-- [ ] Filter by scope, category, active status
+- [ ] Filter by scope, active status
 - [ ] Search by name/description
 - [ ] Create new activity type with indicator linkage
 - [ ] Update activity type details

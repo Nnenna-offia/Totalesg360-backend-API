@@ -12,7 +12,7 @@ from ..serializers import (
 	ActivityTypeDetailSerializer, 
 	ActivityTypeCreateUpdateSerializer
 )
-
+from django.conf import settings
 
 class ActivityTypeListCreateAPIView(APIView):
 	permission_classes = [IsAuthenticated]
@@ -22,7 +22,6 @@ class ActivityTypeListCreateAPIView(APIView):
 		List all activity types.
 		Query params:
 		- scope: Filter by scope code
-		- category: Filter by category
 		- is_active: Filter by active status (true/false)
 		- has_indicator: Filter by whether linked to indicator (true/false)
 		- search: Search in name and description
@@ -35,9 +34,7 @@ class ActivityTypeListCreateAPIView(APIView):
 		if scope_code:
 			queryset = queryset.filter(scope__code=scope_code)
 		
-		category = request.query_params.get('category')
-		if category:
-			queryset = queryset.filter(category=category)
+		# category filtering removed: grouping is handled by Indicator -> ActivityType
 		
 		is_active = request.query_params.get('is_active')
 		if is_active is not None:
@@ -73,10 +70,11 @@ class ActivityTypeListCreateAPIView(APIView):
 		from types import SimpleNamespace
 		temp_view = SimpleNamespace(required_capability='manage_activity_types')
 		if not HasCapability().has_permission(request, temp_view):
-			return problem_response(
-				message="You don't have permission to manage activity types",
-				status=status.HTTP_403_FORBIDDEN
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
+				'title': 'Forbidden',
+				'detail': "You don't have permission to manage activity types"
+			}, status.HTTP_403_FORBIDDEN)
 		
 		serializer = ActivityTypeCreateUpdateSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
@@ -100,10 +98,11 @@ class ActivityTypeDetailAPIView(APIView):
 		"""Get detailed activity type information."""
 		activity_type = self.get_object(pk)
 		if not activity_type:
-			return problem_response(
-				message="Activity type not found",
-				status=status.HTTP_404_NOT_FOUND
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/not_found",
+				'title': 'Not Found',
+				'detail': 'Activity type not found'
+			}, status.HTTP_404_NOT_FOUND)
 		
 		serializer = ActivityTypeDetailSerializer(activity_type)
 		return success_response(data=serializer.data)
@@ -118,17 +117,19 @@ class ActivityTypeDetailAPIView(APIView):
 		from types import SimpleNamespace
 		temp_view = SimpleNamespace(required_capability='manage_activity_types')
 		if not HasCapability().has_permission(request, temp_view):
-			return problem_response(
-				message="You don't have permission to manage activity types",
-				status=status.HTTP_403_FORBIDDEN
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
+				'title': 'Forbidden',
+				'detail': "You don't have permission to manage activity types"
+			}, status.HTTP_403_FORBIDDEN)
 		
 		activity_type = self.get_object(pk)
 		if not activity_type:
-			return problem_response(
-				message="Activity type not found",
-				status=status.HTTP_404_NOT_FOUND
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/not_found",
+				'title': 'Not Found',
+				'detail': 'Activity type not found'
+			}, status.HTTP_404_NOT_FOUND)
 		
 		serializer = ActivityTypeCreateUpdateSerializer(
 			activity_type, 
@@ -152,28 +153,28 @@ class ActivityTypeDetailAPIView(APIView):
 		from types import SimpleNamespace
 		temp_view = SimpleNamespace(required_capability='manage_activity_types')
 		if not HasCapability().has_permission(request, temp_view):
-			return problem_response(
-				message="You don't have permission to manage activity types",
-				status=status.HTTP_403_FORBIDDEN
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
+				'title': 'Forbidden',
+				'detail': "You don't have permission to manage activity types"
+			}, status.HTTP_403_FORBIDDEN)
 		
 		activity_type = self.get_object(pk)
 		if not activity_type:
-			return problem_response(
-				message="Activity type not found",
-				status=status.HTTP_404_NOT_FOUND
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/not_found",
+				'title': 'Not Found',
+				'detail': 'Activity type not found'
+			}, status.HTTP_404_NOT_FOUND)
 		
 		# Check if any submissions exist
 		submission_count = activity_type.submissions.count()
 		if submission_count > 0:
-			return problem_response(
-				message=f"Cannot delete activity type with {submission_count} existing submissions. Consider deactivating instead.",
-				status=status.HTTP_400_BAD_REQUEST
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/bad_request",
+				'title': 'Invalid Request',
+				'detail': f"Cannot delete activity type with {submission_count} existing submissions. Consider deactivating instead."
+			}, status.HTTP_400_BAD_REQUEST)
 		
 		activity_type.delete()
-		return success_response(
-			message="Activity type deleted successfully",
-			status=status.HTTP_204_NO_CONTENT
-		)
+		return success_response(data={"message": "Activity type deleted successfully"}, status=status.HTTP_204_NO_CONTENT)

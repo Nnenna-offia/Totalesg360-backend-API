@@ -8,6 +8,9 @@ ROLE_CAPABILITIES = {
         Capabilities.DEPARTMENT_MANAGE,
         Capabilities.MANAGE_PERIOD,
 
+        # Management capability for activity types (views expect 'manage_activity_types')
+        Capabilities.MANAGE_ACTIVITY_TYPES,
+
         Capabilities.ACTIVITY_TYPE_VIEW,
         Capabilities.ACTIVITY_SUBMIT,
         Capabilities.ACTIVITY_EDIT,

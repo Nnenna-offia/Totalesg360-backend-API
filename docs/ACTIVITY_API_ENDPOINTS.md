@@ -14,7 +14,6 @@ All endpoints are prefixed with `/api/activities/`
 - **Description**: List all activity types with optional filtering
 - **Query Parameters**:
   - `scope` (string): Filter by scope code
-  - `category` (string): Filter by category
   - `is_active` (boolean): Filter by active status
   - `has_indicator` (boolean): Filter by indicator linkage
   - `search` (string): Search in name and description
@@ -31,7 +30,6 @@ All endpoints are prefixed with `/api/activities/`
   "unit": "kWh",
   "scope": "scope-uuid",
   "indicator": "indicator-uuid",
-  "category": "energy",
   "is_active": true
 }
 ```

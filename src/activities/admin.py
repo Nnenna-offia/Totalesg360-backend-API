@@ -12,4 +12,4 @@ class ScopeAdmin(admin.ModelAdmin):
 @admin.register(ActivityType)
 class ActivityTypeAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'unit', 'scope', 'is_active')
-    search_fields = ('name', 'category')
+    search_fields = ('name',)
