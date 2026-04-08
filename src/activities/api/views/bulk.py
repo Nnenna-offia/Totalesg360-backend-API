@@ -19,23 +19,25 @@ class ActivitySubmissionBulkCreateAPIView(APIView):
 		"""
 		Create multiple activity submissions.
 		Payload: { "submissions": [...] }
-		Each submission should have: activity_type_id, reporting_period_id, facility_id (optional), value, unit
+		Each submission should have: activity_type_id, reporting_period_id, facility_id (optional), value
 		"""
 		org, membership = get_org_and_membership(request=request)
 		
 		submissions_data = request.data.get('submissions', [])
 		
 		if not submissions_data:
-			return problem_response(
-				message="No submissions provided",
-				status=status.HTTP_400_BAD_REQUEST
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/bad_request",
+				'title': 'Invalid Request',
+				'detail': 'No submissions provided'
+			}, status.HTTP_400_BAD_REQUEST)
 		
 		if len(submissions_data) > 100:
-			return problem_response(
-				message="Maximum 100 submissions per bulk request",
-				status=status.HTTP_400_BAD_REQUEST
-			)
+			return problem_response({
+				'type': f"{settings.PROBLEM_BASE_URL}/bad_request",
+				'title': 'Invalid Request',
+				'detail': 'Maximum 100 submissions per bulk request'
+			}, status.HTTP_400_BAD_REQUEST)
 		
 		created_submissions = []
 		errors = []
@@ -61,7 +63,6 @@ class ActivitySubmissionBulkCreateAPIView(APIView):
 						reporting_period_id=str(data['reporting_period_id']),
 						facility_id=str(data.get('facility_id')) if data.get('facility_id') else None,
 						value=data['value'],
-						unit=data['unit'],
 					)
 					created_submissions.append(obj)
 				except Exception as e:

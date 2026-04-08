@@ -25,3 +25,12 @@ class ActivitySubmissionAdmin(admin.ModelAdmin):
 	list_display = ("organization", "activity_type", "reporting_period", "facility", "value", "unit")
 	list_filter = ("activity_type",)
 	search_fields = ("organization__name", "activity_type__name")
+
+	def unit(self, obj):
+		# Derive unit from linked ActivityType for display
+		try:
+			return obj.activity_type.unit
+		except Exception:
+			return None
+
+	unit.short_description = 'unit'

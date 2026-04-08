@@ -122,14 +122,14 @@ def main():
             value = round(random.uniform(args.value_min, args.value_max), 3)
             print(f"Submitting activity value {value} for org={org} activity_type={at.id}")
             if not args.dry_run:
-                submit_activity_value(org=org, user=user, activity_type_id=str(at.id), reporting_period_id=str(args.reporting_period_id), facility_id=args.facility_id, value=value, unit=unit)
+                submit_activity_value(org=org, user=user, activity_type_id=str(at.id), reporting_period_id=str(args.reporting_period_id), facility_id=args.facility_id, value=value)
                 created_subs += 1
                 # attempt to create a simple fixture for the submission if model is predictable
                 # fall back to a minimal representation referencing activity type by PK
                 fixtures.append({
                     "model": "submissions.activitysubmission",
                     "pk": str(uuid.uuid4()),
-                    "fields": {"organization": org.id, "activity_type": at.id, "reporting_period": args.reporting_period_id, "facility": args.facility_id, "value": value, "unit": unit, "created_by": user.id if user else None},
+                    "fields": {"organization": org.id, "activity_type": at.id, "reporting_period": args.reporting_period_id, "facility": args.facility_id, "value": value, "created_by": user.id if user else None},
                 })
 
     # write fixtures file if requested

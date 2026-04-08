@@ -36,7 +36,7 @@ class EmissionsIntegrationTests(TestCase):
 
     def test_activity_submission_creates_calculated_emission_and_persist(self):
         # submit activity
-        submit_activity_value(org=self.org, user=self.user, activity_type_id=str(self.activity.id), reporting_period_id=str(self.period.id), value=1000, unit='liters')
+        submit_activity_value(org=self.org, user=self.user, activity_type_id=str(self.activity.id), reporting_period_id=str(self.period.id), value=1000)
 
         # selector should show scope1 sum
         total = get_scope1_emissions(self.org, self.period)

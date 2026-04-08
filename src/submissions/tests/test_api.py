@@ -19,9 +19,9 @@ class SubmissionsAPITests(TestCase):
         self.user = User.objects.create_user(username="apiuser", email="api@example.com", password="pass")
 
         # capabilities and role
-        self.cap_submit = Capability.objects.create(code="submit_indicator", name="Submit")
-        self.cap_manage = Capability.objects.create(code="manage_period", name="Manage Period")
-        self.cap_approve = Capability.objects.create(code="approve_submission", name="Approve")
+        self.cap_submit, _ = Capability.objects.get_or_create(code="submit_indicator", defaults={"name": "Submit"})
+        self.cap_manage, _ = Capability.objects.get_or_create(code="manage_period", defaults={"name": "Manage Period"})
+        self.cap_approve, _ = Capability.objects.get_or_create(code="approve_submission", defaults={"name": "Approve"})
 
         self.role = Role.objects.create(code="data_mgr", name="Data Manager")
         RoleCapability.objects.create(role=self.role, capability=self.cap_submit)

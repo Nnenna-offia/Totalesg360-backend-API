@@ -38,6 +38,12 @@ class ReportingPeriod(BaseModel):
         db_index=True
     )
 
+    # Backwards-compat helper: some tests and scripts may create a period by year.
+    # Keep an optional `year` field to allow legacy creation patterns.
+    year = models.IntegerField(null=True, blank=True)
+    # Optional quarter for quarterly periods (1-4)
+    quarter = models.IntegerField(null=True, blank=True)
+
     start_date = models.DateField()
 
     end_date = models.DateField()
@@ -91,6 +97,40 @@ class ReportingPeriod(BaseModel):
 
     def can_edit(self):
         return self.status == self.Status.OPEN
+
+    def save(self, *args, **kwargs):
+        # Backwards-compat: if `year` is provided and start/end not set, create
+        # an annual period for that year.
+        if self.year and (not self.start_date or not self.end_date):
+            from datetime import date
+            if self.quarter:
+                # compute quarter start/end
+                q = int(self.quarter)
+                if q not in (1, 2, 3, 4):
+                    raise ValidationError("Quarter must be 1-4")
+                self.period_type = self.PeriodType.QUARTERLY
+                if q == 1:
+                    self.start_date = date(self.year, 1, 1)
+                    self.end_date = date(self.year, 3, 31)
+                elif q == 2:
+                    self.start_date = date(self.year, 4, 1)
+                    self.end_date = date(self.year, 6, 30)
+                elif q == 3:
+                    self.start_date = date(self.year, 7, 1)
+                    self.end_date = date(self.year, 9, 30)
+                else:
+                    self.start_date = date(self.year, 10, 1)
+                    self.end_date = date(self.year, 12, 31)
+                if not self.name:
+                    self.name = f"Q{q} {self.year}"
+            else:
+                self.period_type = self.PeriodType.ANNUAL
+                self.start_date = date(self.year, 1, 1)
+                self.end_date = date(self.year, 12, 31)
+                if not self.name:
+                    self.name = str(self.year)
+
+        super().save(*args, **kwargs)
 
     def lock(self, *, by_user=None):
         if self.status == self.Status.LOCKED:

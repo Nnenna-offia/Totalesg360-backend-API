@@ -10,7 +10,7 @@ from submissions.models import DataSubmission, ReportingPeriod
 from indicators.models import Indicator
 
 
-CAP_SUBMIT = "indicator.manage"  # align with view permission requirement
+CAP_SUBMIT = "submit_indicator"  # capability code used in tests/roles
 CAP_MANAGE_PERIOD = "manage_period"
 CAP_APPROVE = "approve_submission"
 

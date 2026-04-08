@@ -17,7 +17,7 @@ class EdgeCaseTests(TestCase):
         self.org = Organization.objects.create(name="EdgeOrg", sector="finance", country="NG")
         self.user = User.objects.create_user(username="edge", email="edge@example.com", password="pass")
         self.role = Role.objects.create(code="r", name="R")
-        self.cap = Capability.objects.create(code="submit_indicator", name="Submit")
+        self.cap, _ = Capability.objects.get_or_create(code="submit_indicator", defaults={"name": "Submit"})
         RoleCapability.objects.create(role=self.role, capability=self.cap)
         Membership.objects.create(user=self.user, organization=self.org, role=self.role)
 

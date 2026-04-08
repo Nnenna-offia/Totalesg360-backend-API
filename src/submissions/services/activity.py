@@ -1,7 +1,7 @@
 from typing import Optional
 from django.db import transaction
 from django.utils import timezone
-from django.core.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import ValidationError, PermissionDenied
 
 from submissions.models.activity_submission import ActivitySubmission
 from submissions.models import ReportingPeriod
@@ -9,6 +9,8 @@ from activities.models.activity_type import ActivityType
 from organizations.models.facility import Facility
 from accounts.selectors.org_context import get_user_membership_for_org
 from emissions.services.calculate_emission import calculate_and_store
+from submissions.services.reporting_period import get_or_raise_active_reporting_period
+from targets.models import TargetGoal
 
 
 def _user_is_org_member(user, org):
@@ -16,41 +18,58 @@ def _user_is_org_member(user, org):
     return membership is not None
 
 
-def submit_activity_value(*, org, user, activity_type_id: str, reporting_period_id: str, facility_id: Optional[str] = None, value=None, unit: str = None) -> ActivitySubmission:
+def submit_activity_value(*, org, user, activity_type_id: str, reporting_period_id: Optional[str] = None, facility_id: Optional[str] = None, value=None) -> ActivitySubmission:
     try:
         activity_type = ActivityType.objects.get(id=activity_type_id)
     except ActivityType.DoesNotExist:
         raise ValidationError("ActivityType not found")
 
-    try:
-        period = ReportingPeriod.objects.get(id=reporting_period_id, organization=org)
-    except ReportingPeriod.DoesNotExist:
-        raise ValidationError("ReportingPeriod not found for organization")
+    # Resolve reporting period: either provided explicitly or derived from the
+    # activity_type -> indicator -> target -> active reporting period.
+    period = None
+    if reporting_period_id:
+        try:
+            period = ReportingPeriod.objects.get(id=reporting_period_id, organization=org)
+        except ReportingPeriod.DoesNotExist:
+            raise ValidationError(detail="ReportingPeriod not found for organization")
+    else:
+        # Find a target associated with the activity's indicator
+        target = TargetGoal.objects.filter(organization=org, indicator=activity_type.indicator, status=TargetGoal.Status.ACTIVE).first()
+        if not target:
+            raise ValidationError("No active reporting period found for this target")
+        period = get_or_raise_active_reporting_period(org, target)
 
     if period.status != ReportingPeriod.Status.OPEN:
-        raise PermissionDenied("Reporting period is not open for edits")
+        raise PermissionDenied(detail="Reporting period is not open for edits")
 
     facility = None
     if facility_id:
         try:
             facility = Facility.objects.get(id=facility_id)
         except Facility.DoesNotExist:
-            raise ValidationError("Facility not found")
+            raise ValidationError(detail="Facility not found")
         if facility.organization_id != org.id:
-            raise ValidationError("Facility does not belong to organization")
+            raise ValidationError(detail="Facility does not belong to organization")
 
     if not _user_is_org_member(user, org):
-        raise PermissionDenied("User is not a member of the organization")
+        raise PermissionDenied(detail="User is not a member of the organization")
 
-    # Basic validation of unit
-    if unit is None:
-        unit = activity_type.unit
 
     defaults = {
         'value': value,
-        'unit': unit,
         'created_by': user,
     }
+
+    # Prevent duplicate submissions for the same org/period/activity/facility
+    exists = ActivitySubmission.objects.filter(
+        organization=org,
+        reporting_period=period,
+        activity_type=activity_type,
+        facility=facility,
+    ).exists()
+
+    if exists:
+        raise ValidationError("Submission already exists for this reporting period")
 
     with transaction.atomic():
         obj = ActivitySubmission.objects.create(
@@ -59,7 +78,6 @@ def submit_activity_value(*, org, user, activity_type_id: str, reporting_period_
             activity_type=activity_type,
             reporting_period=period,
             value=value,
-            unit=unit,
             created_by=user,
         )
 

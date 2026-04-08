@@ -15,7 +15,7 @@ class ReportingPeriodPaginationTests(TestCase):
         self.org = Organization.objects.create(name='PagOrg', sector='tech', country='US')
         self.user = User.objects.create_user(username='paguser', email='p@example.com', password='pass')
         # give user manage_period capability via role
-        cap = Capability.objects.create(code='manage_period', name='Manage Period')
+        cap, _ = Capability.objects.get_or_create(code='manage_period', defaults={'name': 'Manage Period'})
         role = Role.objects.create(code='rp_mgr', name='RP Manager')
         RoleCapability.objects.create(role=role, capability=cap)
         Membership.objects.create(user=self.user, organization=self.org, role=role)
@@ -54,7 +54,7 @@ class ReportingPeriodPaginationTests(TestCase):
         self.org = Organization.objects.create(name='PagOrg', sector='tech', country='US')
         self.user = User.objects.create_user(username='paguser', email='p@example.com', password='pass')
         # give user manage_period capability via role
-        cap = Capability.objects.create(code='manage_period', name='Manage Period')
+        cap, _ = Capability.objects.get_or_create(code='manage_period', defaults={'name': 'Manage Period'})
         role = Role.objects.create(code='rp_mgr', name='RP Manager')
         RoleCapability.objects.create(role=role, capability=cap)
         Membership.objects.create(user=self.user, organization=self.org, role=role)

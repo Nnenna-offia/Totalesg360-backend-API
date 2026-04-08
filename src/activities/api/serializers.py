@@ -94,7 +94,6 @@ class ActivitySubmissionCreateSerializer(serializers.Serializer):
 	reporting_period_id = serializers.UUIDField()
 	facility_id = serializers.UUIDField(required=False, allow_null=True)
 	value = serializers.DecimalField(max_digits=18, decimal_places=6)
-	unit = serializers.CharField(max_length=50)
 
 	def validate(self, attrs):
 		# Basic validations omitted; service will perform deeper checks
@@ -108,11 +107,12 @@ class ActivitySubmissionListSerializer(serializers.ModelSerializer):
 	facility = serializers.SerializerMethodField()
 	reporting_period = serializers.SerializerMethodField()
 	created_by = serializers.SerializerMethodField()
+	unit = serializers.SerializerMethodField()
 	
 	class Meta:
 		model = ActivitySubmission
 		fields = ['id', 'organization', 'facility', 'activity_type', 'reporting_period', 
-				  'value', 'unit', 'created_by', 'created_at', 'updated_at']
+			  'value', 'unit', 'created_by', 'created_at', 'updated_at']
 		read_only_fields = ['id', 'organization', 'created_by', 'created_at', 'updated_at']
 	
 	def get_organization(self, obj):
@@ -136,17 +136,29 @@ class ActivitySubmissionListSerializer(serializers.ModelSerializer):
 			return {'id': str(obj.created_by.id), 'email': obj.created_by.email}
 		return None
 
+	def get_unit(self, obj):
+		if obj.activity_type and getattr(obj.activity_type, 'unit', None):
+			return obj.activity_type.unit
+		return None
+
 
 class ActivitySubmissionUpdateSerializer(serializers.ModelSerializer):
 	"""Serializer for updating activity submissions."""
 	
 	class Meta:
 		model = ActivitySubmission
-		fields = ['value', 'unit']
+		fields = ['value']
 
 
 class ActivitySubmissionSerializer(serializers.ModelSerializer):
+	unit = serializers.SerializerMethodField()
+
 	class Meta:
 		model = ActivitySubmission
 		fields = ['id', 'organization', 'facility', 'activity_type', 'reporting_period', 'value', 'unit', 'created_by', 'created_at']
 		read_only_fields = ['id', 'organization', 'created_by', 'created_at']
+
+	def get_unit(self, obj):
+		if obj.activity_type and getattr(obj.activity_type, 'unit', None):
+			return obj.activity_type.unit
+		return None

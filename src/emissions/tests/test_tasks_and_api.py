@@ -29,7 +29,7 @@ class EmissionsTasksAPITests(TestCase):
 
     def test_task_persist_and_api_endpoint(self):
         # submit activity
-        submit_activity_value(org=self.org, user=self.user, activity_type_id=str(self.activity.id), reporting_period_id=str(self.period.id), value=100, unit='liters')
+        submit_activity_value(org=self.org, user=self.user, activity_type_id=str(self.activity.id), reporting_period_id=str(self.period.id), value=100)
         # lock period
         self.period.lock(by_user=self.user)
 

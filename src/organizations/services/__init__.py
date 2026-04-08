@@ -1,4 +1,15 @@
-"""Services package."""
-from .settings import update_general_settings, update_security_settings
+"""Services package.
 
-__all__ = ['update_general_settings', 'update_security_settings']
+Expose organization service helpers.
+"""
+from .settings import update_general_settings, update_security_settings
+from .access import validate_user_organization, OrgHeaderMissing, OrgNotFound, UserNotInOrg
+
+__all__ = [
+	'update_general_settings',
+	'update_security_settings',
+	'validate_user_organization',
+	'OrgHeaderMissing',
+	'OrgNotFound',
+	'UserNotInOrg',
+]

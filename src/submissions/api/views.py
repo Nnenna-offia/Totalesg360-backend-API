@@ -17,11 +17,14 @@ from submissions.models import ReportingPeriod
 from submissions.api.serializers import ReportingPeriodSerializer, ReportingPeriodGenerationSerializer
 from submissions.services.period_generation import generate_reporting_periods
 from rest_framework.permissions import IsAdminUser
+from submissions.api.serializers import ActiveReportingPeriodSerializer
+from submissions.services.reporting_period import get_or_raise_active_reporting_period
+from targets.models import TargetGoal
 
 
 class SubmitIndicatorAPIView(APIView):
 	permission_classes = [IsOrgMember, HasCapability]
-	required_capability = "indicator.manage"
+	required_capability = "submit_indicator"
 
 	def post(self, request):
 		org, membership = get_org_and_membership(request=request)
@@ -189,6 +192,53 @@ class ReportingPeriodListCreateAPIView(APIView):
 		year = serializer.validated_data['year']
 		period_type = serializer.validated_data['period_type']
 		
+		# If a specific quarter was requested, create only that quarter
+		req_quarter = serializer.validated_data.get('quarter') if hasattr(serializer, 'validated_data') else None
+		if req_quarter:
+			# compute quarter start/end
+			from datetime import date
+			q = int(req_quarter)
+			if q not in (1, 2, 3, 4):
+				raise Exception("Quarter must be 1-4")
+			if q == 1:
+				start = date(year, 1, 1)
+				end = date(year, 3, 31)
+			elif q == 2:
+				start = date(year, 4, 1)
+				end = date(year, 6, 30)
+			elif q == 3:
+				start = date(year, 7, 1)
+				end = date(year, 9, 30)
+			else:
+				start = date(year, 10, 1)
+				end = date(year, 12, 31)
+
+			# Check if already exists
+			existing_periods = ReportingPeriod.objects.filter(
+				organization=org,
+				period_type=ReportingPeriod.PeriodType.QUARTERLY,
+				start_date=start,
+				end_date=end,
+			)
+			if existing_periods.exists():
+				out = ReportingPeriodSerializer(existing_periods.first())
+				return success_response(data=out.data, meta={"message": "period exists", "created": False}, status=status.HTTP_200_OK)
+
+			# create the period
+			period = ReportingPeriod.objects.create(
+				organization=org,
+				name=f"Q{q} {year}",
+				period_type=ReportingPeriod.PeriodType.QUARTERLY,
+				start_date=start,
+				end_date=end,
+				status=ReportingPeriod.Status.OPEN,
+				is_active=True,
+				year=year,
+				quarter=q,
+			)
+			out = ReportingPeriodSerializer(period)
+			return success_response(data=out.data, meta={"created": True}, status=status.HTTP_201_CREATED)
+
 		# Check if periods already exist for this org, year, and type
 		existing_periods = ReportingPeriod.objects.filter(
 			organization=org,
@@ -238,11 +288,17 @@ class ReportingPeriodListCreateAPIView(APIView):
 				period_type=period_type,
 				start_date__year=year
 			)
-			
-			out = ReportingPeriodSerializer(created_periods, many=True)
-			
+		
+			# If only a single period was generated, return the object; else return list
+			if created_periods.count() == 1:
+				out = ReportingPeriodSerializer(created_periods.first())
+				data_payload = out.data
+			else:
+				out = ReportingPeriodSerializer(created_periods, many=True)
+				data_payload = out.data
+		
 			return success_response(
-				data=out.data,
+				data=data_payload,
 				meta={
 					"message": f"Successfully generated {len(generated_periods)} {period_type} periods for {year}",
 					"count": len(generated_periods),
@@ -344,4 +400,39 @@ class ApproveSubmissionAPIView(APIView):
 
 		out = DataSubmissionSerializer(sub)
 		return success_response(data=out.data)
+
+
+
+class ActiveReportingPeriodAPIView(APIView):
+    permission_classes = [IsOrgMember]
+
+    def get(self, request):
+        org, _ = get_org_and_membership(request=request)
+        target_id = request.query_params.get('target_id')
+        if not target_id:
+            return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/invalid-request", 'title': 'Invalid request', 'detail': 'target_id query parameter required'}, status.HTTP_400_BAD_REQUEST)
+
+        try:
+            target = TargetGoal.objects.get(id=target_id, organization=org)
+        except TargetGoal.DoesNotExist:
+            return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/not-found", 'title': 'Not found', 'detail': 'Target not found'}, status.HTTP_404_NOT_FOUND)
+
+        try:
+            period = get_or_raise_active_reporting_period(org, target)
+        except Exception as exc:
+            return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/not-found", 'title': 'Not found', 'detail': str(exc)}, status.HTTP_404_NOT_FOUND)
+
+        # Build response matching expected schema
+        data = {
+            'id': str(period.id),
+            'target_id': str(target.id),
+            'name': period.name,
+            'frequency': period.period_type,
+            'status': period.status,
+            'start_date': period.start_date,
+            'end_date': period.end_date,
+        }
+
+        serializer = ActiveReportingPeriodSerializer(data)
+        return success_response(data=serializer.data)
 

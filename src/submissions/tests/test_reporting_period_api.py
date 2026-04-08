@@ -18,7 +18,7 @@ class ReportingPeriodAPITests(TestCase):
         self.user = User.objects.create_user(username="user2", email="u2@example.com", password="pass")
 
         # role & capability
-        self.cap_manage = Capability.objects.create(code="manage_period", name="Manage")
+        self.cap_manage, _ = Capability.objects.get_or_create(code="manage_period", defaults={"name": "Manage"})
         self.role = Role.objects.create(code="mgr", name="Manager")
         RoleCapability.objects.create(role=self.role, capability=self.cap_manage)
         Membership.objects.create(user=self.user, organization=self.org, role=self.role)

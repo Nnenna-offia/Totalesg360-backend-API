@@ -153,7 +153,6 @@ class Command(BaseCommand):
                         reporting_period_id=str(options['reporting_period_id']),
                         facility_id=options['facility_id'],
                         value=value,
-                        unit=unit
                     )
                     created_subs += 1
                     fixtures.append({
@@ -165,7 +164,6 @@ class Command(BaseCommand):
                             "reporting_period": options['reporting_period_id'],
                             "facility": options['facility_id'],
                             "value": value,
-                            "unit": unit,
                             "created_by": user.id if user else None
                         },
                     })

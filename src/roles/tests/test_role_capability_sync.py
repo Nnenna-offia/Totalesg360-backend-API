@@ -7,8 +7,8 @@ from roles.api.serializers import RoleSerializer
 
 class RoleCapabilitySyncTests(TestCase):
     def setUp(self):
-        self.cap_a = Capability.objects.create(code='cap_a', name='Capability A')
-        self.cap_b = Capability.objects.create(code='cap_b', name='Capability B')
+        self.cap_a, _ = Capability.objects.get_or_create(code='cap_a', defaults={'name': 'Capability A'})
+        self.cap_b, _ = Capability.objects.get_or_create(code='cap_b', defaults={'name': 'Capability B'})
 
     def test_create_role_with_capabilities(self):
         data = {

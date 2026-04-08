@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Q
 
 from common.api import success_response, problem_response
+from common.mixins import OrganizationAccessMixin
 from common.permissions import HasCapability
 from accounts.selectors.org_context import get_org_and_membership
 from activities.models.activity_type import ActivityType
@@ -14,7 +15,7 @@ from ..serializers import (
 )
 from django.conf import settings
 
-class ActivityTypeListCreateAPIView(APIView):
+class ActivityTypeListCreateAPIView(OrganizationAccessMixin, APIView):
 	permission_classes = [IsAuthenticated]
 	
 	def get(self, request):
@@ -64,16 +65,17 @@ class ActivityTypeListCreateAPIView(APIView):
 		Create a new activity type.
 		Requires 'manage_activity_types' capability.
 		"""
+		# `OrganizationAccessMixin` ensures `request.organization` exists
 		org, membership = get_org_and_membership(request=request)
 		
 		# Create a temporary view object with required_capability for permission check
 		from types import SimpleNamespace
-		temp_view = SimpleNamespace(required_capability='manage_activity_types')
+		temp_view = SimpleNamespace(required_capability='activity.edit')
 		if not HasCapability().has_permission(request, temp_view):
 			return problem_response({
 				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
 				'title': 'Forbidden',
-				'detail': "You don't have permission to manage activity types"
+				'detail': f"You don't have permission to manage activity types ({temp_view.required_capability})"
 			}, status.HTTP_403_FORBIDDEN)
 		
 		serializer = ActivityTypeCreateUpdateSerializer(data=request.data)
@@ -120,7 +122,7 @@ class ActivityTypeDetailAPIView(APIView):
 			return problem_response({
 				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
 				'title': 'Forbidden',
-				'detail': "You don't have permission to manage activity types"
+				'detail': f"You don't have permission to manage activity types ({temp_view.required_capability})"
 			}, status.HTTP_403_FORBIDDEN)
 		
 		activity_type = self.get_object(pk)
@@ -148,6 +150,7 @@ class ActivityTypeDetailAPIView(APIView):
 		Requires 'manage_activity_types' capability.
 		Only allowed if no submissions exist.
 		"""
+		
 		org, membership = get_org_and_membership(request=request)
 		
 		from types import SimpleNamespace

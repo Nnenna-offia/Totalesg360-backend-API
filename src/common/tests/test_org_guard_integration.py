@@ -19,7 +19,7 @@ class OrgGuardIntegrationTests(TestCase):
         # Create org, role, capability and membership
         self.org = Organization.objects.create(name="ACME", sector="finance", country="NG")
         self.role = Role.objects.create(code="org_admin", name="Org Admin")
-        self.cap = Capability.objects.create(code="org.manage", name="Manage Org")
+        self.cap, _ = Capability.objects.get_or_create(code="org.manage", defaults={"name": "Manage Org"})
         RoleCapability.objects.create(role=self.role, capability=self.cap)
 
         # Add membership linking self.user -> org with role

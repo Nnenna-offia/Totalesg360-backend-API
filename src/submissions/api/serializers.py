@@ -106,6 +106,8 @@ class ReportingPeriodSerializer(serializers.ModelSerializer):
 			"id",
 			"organization",
 			"name",
+			"year",
+			"quarter",
 			"period_type",
 			"start_date",
 			"end_date",
@@ -134,6 +136,7 @@ class ReportingPeriodGenerationSerializer(serializers.Serializer):
 	"""
 	year = serializers.IntegerField(min_value=2000, max_value=2100)
 	period_type = serializers.ChoiceField(
+		required=False,
 		choices=[
 			'DAILY',
 			'WEEKLY',
@@ -144,6 +147,19 @@ class ReportingPeriodGenerationSerializer(serializers.Serializer):
 			'ANNUAL'
 		]
 	)
+	# allow specifying a single quarter instead of period_type
+	quarter = serializers.IntegerField(required=False, min_value=1, max_value=4)
+
+	def validate(self, attrs):
+		# if quarter is provided but period_type is missing, infer QUARTERLY
+		if 'period_type' not in attrs or not attrs.get('period_type'):
+			if attrs.get('quarter'):
+				attrs['period_type'] = 'QUARTERLY'
+			else:
+				raise serializers.ValidationError({
+					'period_type': 'Either period_type or quarter must be provided.'
+				})
+		return attrs
 	
 	def validate_year(self, value):
 		"""Ensure year is reasonable"""
@@ -154,4 +170,14 @@ class ReportingPeriodGenerationSerializer(serializers.Serializer):
 		if value > current_year + 10:
 			raise serializers.ValidationError(f"Year must be {current_year + 10} or earlier")
 		return value
+
+
+class ActiveReportingPeriodSerializer(serializers.Serializer):
+		id = serializers.UUIDField()
+		target_id = serializers.UUIDField()
+		name = serializers.CharField()
+		frequency = serializers.CharField(source='period_type')
+		status = serializers.CharField()
+		start_date = serializers.DateField()
+		end_date = serializers.DateField()
 

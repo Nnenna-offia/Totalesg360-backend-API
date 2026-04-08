@@ -19,14 +19,14 @@ class ApprovalFlowTests(TestCase):
 
         # submitter user
         self.submit_user = User.objects.create_user(username="submit", email="submit@example.com", password="pass")
-        cap_submit = Capability.objects.create(code="submit_indicator", name="Submit")
+        cap_submit, _ = Capability.objects.get_or_create(code="submit_indicator", defaults={"name": "Submit"})
         role_submit = Role.objects.create(code="r_submit", name="Submitter")
         RoleCapability.objects.create(role=role_submit, capability=cap_submit)
         Membership.objects.create(user=self.submit_user, organization=self.org, role=role_submit)
 
         # approver user
         self.approver = User.objects.create_user(username="approver", email="approver@example.com", password="pass")
-        cap_approve = Capability.objects.create(code="approve_submission", name="Approve")
+        cap_approve, _ = Capability.objects.get_or_create(code="approve_submission", defaults={"name": "Approve"})
         role_approve = Role.objects.create(code="r_approve", name="Approver")
         RoleCapability.objects.create(role=role_approve, capability=cap_approve)
         Membership.objects.create(user=self.approver, organization=self.org, role=role_approve)

@@ -13,13 +13,13 @@ class ActivitySubmission(BaseModel):
     activity_type = models.ForeignKey(ActivityType, on_delete=models.PROTECT, related_name='submissions')
     reporting_period = models.ForeignKey(ReportingPeriod, on_delete=models.PROTECT, related_name='activity_submissions')
     value = models.DecimalField(max_digits=18, decimal_places=6)
-    unit = models.CharField(max_length=50)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'submissions_activitysubmission'
         verbose_name = 'Activity Submission'
         verbose_name_plural = 'Activity Submissions'
+        unique_together = (('organization', 'reporting_period', 'activity_type', 'facility'),)
 
     def __str__(self):
-        return f"{self.organization} - {self.activity_type.name} ({self.value} {self.unit})"
+        return f"{self.organization} - {self.activity_type.name} ({self.value})"
