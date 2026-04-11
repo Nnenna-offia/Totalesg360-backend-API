@@ -215,14 +215,14 @@ REFRESH_COOKIE_NAME = "refresh_token"
 # CSRF Configuration (for cookie-based auth)
 CSRF_COOKIE_SECURE = not DEBUG  # True in production
 CSRF_COOKIE_HTTPONLY = False  # Must be False so frontend can read it
-CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"  # None in production, Lax in dev
 CSRF_COOKIE_NAME = "csrftoken"
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()]
 
 # CORS configuration - allow frontend origins to access API and send credentials
 # Do NOT set CORS_ALLOW_ALL_ORIGINS = True when using credentials; instead whitelist origins.
 CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://dev-backend.totalesg360.com").split(",") if origin.strip()
+    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if origin.strip()
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -242,7 +242,7 @@ CORS_EXPOSE_HEADERS = [
 # Session cookie security
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"  # None in production, Lax in dev
 
 # ---------------------------
 # Logging Configuration

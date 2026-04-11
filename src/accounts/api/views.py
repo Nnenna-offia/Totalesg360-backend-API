@@ -45,11 +45,23 @@ from django.utils.crypto import get_random_string
 
 # Cookie configuration helpers
 def get_cookie_config(cookie_type: str) -> dict:
-    """Get secure cookie configuration based on type."""
+    """Get secure cookie configuration based on environment.
+    
+    In development (DEBUG=True):
+    - secure=False (allows HTTP)
+    - samesite="Lax" (allows same-site requests)
+    
+    In production (DEBUG=False):
+    - secure=True (requires HTTPS)
+    - samesite="None" (allows cross-site requests with credentials)
+    """
+    is_secure = not settings.DEBUG
+    samesite_value = "None" if is_secure else "Lax"
+    
     base_config = {
         "httponly": True,
-        "secure": True,
-        "samesite": "Lax",
+        "secure": is_secure,
+        "samesite": samesite_value,
     }
     
     if cookie_type == "access":
@@ -75,15 +87,33 @@ def get_cookie_config(cookie_type: str) -> dict:
 
 
 class LoginView(APIView):
-    """Authenticate user and set secure JWT cookies.
+    """Authenticate user and set secure JWT cookies with CSRF protection.
     
     POST /auth/login/
     Body: {"email": "user@example.com", "password": "secret"}
     
-    Response: 204 No Content with cookies set:
+    **Response:** 200 OK with user data, memberships, and CSRF token
+    {
+        "user": {...},
+        "memberships": [...],
+        "csrf_token": "64-char-masked-csrf-token"
+    }
+    
+    **Cookies Set:**
     - access_token (HttpOnly, Secure)
     - refresh_token (HttpOnly, Secure)
-    - csrftoken (Secure, readable by JS)
+    - csrftoken (HttpOnly=False, so frontend can read it)
+    
+    **CSRF Token Rotation:**
+    - Token is rotated on every login for security (prevents fixation attacks)
+    - Token is returned in both response body and X-CSRFToken header
+    
+    **Frontend Workflow:**
+    1. Extract csrf_token from response.data
+    2. Store it in state/localStorage
+    3. Send X-CSRFToken header on all POST/PUT/DELETE requests
+    4. Browser auto-sends csrftoken cookie on all requests
+    5. Django validates header token matches cookie
     """
     
     permission_classes = []  # Public endpoint
@@ -201,9 +231,13 @@ class RefreshView(APIView):
     POST /auth/refresh/
     
     Reads refresh_token from HttpOnly cookie, validates it, rotates it,
-    and sets new access_token and refresh_token cookies.
+    and sets new access_token and refresh_token cookies. Also rotates CSRF
+    token for security consistency.
     
-    Response: 204 No Content with updated cookies
+    Response: 200 OK with new CSRF token in body and updated cookies
+    {
+        "csrf_token": "64-char-masked-csrf-token"
+    }
     """
     
     permission_classes = []  # Public endpoint
@@ -239,8 +273,17 @@ class RefreshView(APIView):
         # Issue new access token
         new_access_token = auth_services.create_access_token(user)
         
-        # Build response with updated cookies
-        response = Response(status=status.HTTP_204_NO_CONTENT)
+        # Rotate CSRF token (consistency with login flow)
+        csrf.rotate_token(request)
+        csrf_token = csrf.get_token(request)
+        
+        # Build response with user info and new CSRF token
+        response = Response(
+            data={
+                "csrf_token": csrf_token,
+            },
+            status=status.HTTP_200_OK
+        )
         
         # Set new access token
         access_config = get_cookie_config("access")
@@ -264,6 +307,17 @@ class RefreshView(APIView):
             secure=refresh_config["secure"],
             samesite=refresh_config["samesite"],
             path=refresh_config["path"],
+        )
+        
+        # Set new CSRF token cookie
+        csrf_config = get_cookie_config("csrf")
+        response.set_cookie(
+            key=csrf_config["key"],
+            value=csrf_token,
+            httponly=csrf_config["httponly"],
+            secure=csrf_config["secure"],
+            samesite=csrf_config["samesite"],
+            path=csrf_config["path"],
         )
         
         return response
@@ -311,14 +365,20 @@ class LogoutView(APIView):
 
 
 class CSRFView(APIView):
-    """Get CSRF token for frontend bootstrap.
+    """Get CSRF token for frontend bootstrap (unauthenticated).
     
     GET /auth/csrf/
     
-    Returns CSRF token in cookie. Frontend reads cookie value and sends
-    as X-CSRFToken header on non-GET requests.
+    **Use Case:** Before login, to protect signup/password-reset forms
     
-    Response: 204 No Content with csrftoken cookie set
+    Returns CSRF token in response body and sets it in cookie. Frontend should:
+    1. Store csrf_token from response.data
+    2. Send X-CSRFToken header on subsequent POST/PUT/DELETE requests
+    
+    Response: 200 OK with CSRF token
+    {
+        "csrf_token": "64-char-masked-csrf-token"
+    }
     """
     
     permission_classes = []
@@ -328,7 +388,10 @@ class CSRFView(APIView):
         # Generate CSRF token and set cookie
         csrf_token = csrf.get_token(request)
         
-        response = Response(status=status.HTTP_204_NO_CONTENT)
+        response = Response(
+            data={"csrf_token": csrf_token},
+            status=status.HTTP_200_OK
+        )
         
         csrf_config = get_cookie_config("csrf")
         response.set_cookie(
