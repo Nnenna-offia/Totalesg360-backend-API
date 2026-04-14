@@ -19,8 +19,6 @@ DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
 
 
 
@@ -54,6 +52,9 @@ INSTALLED_APPS = [
     'dashboard',
     'activities',
     'emissions',
+    'esg_scoring',
+    'group_analytics',
+    'reports',
 ]
 
 
@@ -243,6 +244,19 @@ CORS_EXPOSE_HEADERS = [
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"  # None in production, Lax in dev
+
+# ---------------------------
+# JWT Token Cookies Configuration (for Cross-Origin Requests)
+# ---------------------------
+# Access token cookie settings (for cross-origin auth)
+ACCESS_COOKIE_SECURE = not DEBUG  # True in production, False in dev
+ACCESS_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+ACCESS_COOKIE_HTTPONLY = True
+
+# Refresh token cookie settings (for cross-origin token refresh)
+REFRESH_COOKIE_SECURE = not DEBUG  # True in production, False in dev
+REFRESH_COOKIE_SAMESITE = "None" if not DEBUG else "Lax"
+REFRESH_COOKIE_HTTPONLY = True
 
 # ---------------------------
 # Logging Configuration

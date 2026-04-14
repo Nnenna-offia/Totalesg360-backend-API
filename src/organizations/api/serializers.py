@@ -213,3 +213,127 @@ class SecuritySettingsUpdateSerializer(serializers.Serializer):
         required=False
     )
     auto_compliance_enabled = serializers.BooleanField(required=False)
+
+
+# ===================================================================
+# Organization Hierarchy Serializers
+# ===================================================================
+
+class OrganizationHierarchyNodeSerializer(serializers.ModelSerializer):
+    """Single node in organization hierarchy tree."""
+    
+    organization_type_display = serializers.CharField(
+        source='get_organization_type_display',
+        read_only=True
+    )
+    parent_id = serializers.UUIDField(source='parent.id', read_only=True, allow_null=True)
+    parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = Organization
+        fields = [
+            'id',
+            'name',
+            'organization_type',
+            'organization_type_display',
+            'parent_id',
+            'parent_name',
+            'sector',
+            'country',
+            'is_active',
+        ]
+        read_only_fields = fields
+
+
+class OrganizationTreeSerializer(serializers.Serializer):
+    """
+    Recursive serializer for organization hierarchy tree.
+    Can be nested multiple levels deep.
+    """
+    
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    organization_type = serializers.CharField(read_only=True)
+    organization_type_display = serializers.CharField(read_only=True)
+    sector = serializers.CharField(read_only=True)
+    country = serializers.CharField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    subsidiaries = serializers.SerializerMethodField(read_only=True)
+    
+    def get_subsidiaries(self, obj):
+        """Recursively serialize child organizations."""
+        if not isinstance(obj, dict):
+            # obj is from selector function (dict-based tree)
+            children = obj.get('subsidiaries', [])
+        else:
+            # obj is Organization instance
+            children = obj.get('subsidiaries', [])
+        
+        return [self.to_representation(child) for child in children]
+
+
+class CreateSubsidiarySerializer(serializers.Serializer):
+    """Serializer for creating subsidiary organizations."""
+    
+    name = serializers.CharField(
+        max_length=255,
+        required=True,
+        help_text="Organization name"
+    )
+    sector = serializers.ChoiceField(
+        choices=[
+            ("manufacturing", "Manufacturing"),
+            ("oil_gas", "Oil & Gas"),
+            ("finance", "Finance"),
+        ],
+        required=True
+    )
+    country = serializers.CharField(
+        max_length=2,
+        required=True,
+        help_text="ISO 3166-1 alpha-2 country code"
+    )
+    organization_type = serializers.ChoiceField(
+        choices=Organization.OrganizationType.choices,
+        default=Organization.OrganizationType.SUBSIDIARY,
+        required=False
+    )
+    company_size = serializers.ChoiceField(
+        choices=[
+            ("small", "Small (1-50 employees)"),
+            ("medium", "Medium (51-250 employees)"),
+            ("large", "Large (251-1000 employees)"),
+            ("enterprise", "Enterprise (1000+ employees)"),
+        ],
+        required=False,
+        allow_null=True
+    )
+    registered_name = serializers.CharField(
+        max_length=500,
+        required=False,
+        allow_blank=True
+    )
+    primary_reporting_focus = serializers.ChoiceField(
+        choices=Organization.PrimaryReportingFocus.choices,
+        required=False
+    )
+
+
+class OrganizationStatisticsSerializer(serializers.Serializer):
+    """Serializer for organization hierarchy statistics."""
+    
+    organization_id = serializers.UUIDField(read_only=True)
+    total_descendants = serializers.IntegerField(read_only=True)
+    direct_children = serializers.IntegerField(read_only=True)
+    depth = serializers.IntegerField(read_only=True)
+    organization_type = serializers.CharField(read_only=True)
+    type_breakdown = serializers.DictField(read_only=True)
+
+
+class MovleSubsidiarySerializer(serializers.Serializer):
+    """Serializer for moving subsidiary to different parent."""
+    
+    new_parent_id = serializers.UUIDField(
+        required=True,
+        help_text="ID of new parent organization"
+    )

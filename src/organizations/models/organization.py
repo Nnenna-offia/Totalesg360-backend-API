@@ -7,6 +7,7 @@ from django_countries.fields import CountryField
 class Organization(BaseModel):
     """
     Represents a company/entity using the ESG platform.
+    Supports hierarchical structure: Groups → Subsidiaries → Business Units.
     Settings field stores sector-specific configuration (dropdowns, scopes, etc.).
     """
     
@@ -15,7 +16,32 @@ class Organization(BaseModel):
         INTERNATIONAL = "INTERNATIONAL", "International Frameworks Only"
         HYBRID = "HYBRID", "Nigeria + International (Hybrid)"
     
-    name = models.CharField(max_length=255, unique=True)
+    class OrganizationType(models.TextChoices):
+        GROUP = "group", "Group / Parent Company"
+        SUBSIDIARY = "subsidiary", "Subsidiary / Business Unit"
+        FACILITY = "facility", "Facility / Operating Site"
+        DEPARTMENT = "department", "Department / Division"
+    
+    # Hierarchy fields
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="subsidiaries",
+        db_index=True,
+        help_text="Parent organization (for subsidiaries and business units)"
+    )
+    
+    organization_type = models.CharField(
+        max_length=20,
+        choices=OrganizationType.choices,
+        default=OrganizationType.SUBSIDIARY,
+        db_index=True,
+        help_text="Organization type in hierarchy: Group, Subsidiary, Facility, Department"
+    )
+    
+    name = models.CharField(max_length=255)
     registered_name = models.CharField(
         max_length=500,
         blank=True,
@@ -87,7 +113,37 @@ class Organization(BaseModel):
         indexes = [
             models.Index(fields=['sector', 'is_active']),
             models.Index(fields=['primary_reporting_focus']),
+            models.Index(fields=['parent']),
+            models.Index(fields=['organization_type']),
+            models.Index(fields=['parent', 'organization_type']),
         ]
 
     def __str__(self):
+        """Return organization name with hierarchy context."""
+        if self.parent:
+            return f"{self.name} (subsidiary of {self.parent.name})"
         return self.name
+    
+    def get_ancestors(self):
+        """Get all parent organizations up the hierarchy."""
+        ancestors = []
+        current = self.parent
+        while current:
+            ancestors.append(current)
+            current = current.parent
+        return ancestors
+    
+    def get_descendants(self, include_self=False):
+        """Get all child organizations (recursive)."""
+        descendants = []
+        if include_self:
+            descendants.append(self)
+        for child in self.subsidiaries.all():
+            descendants.append(child)
+            descendants.extend(child.get_descendants())
+        return descendants
+    
+    @property
+    def hierarchy_level(self):
+        """Calculate depth in hierarchy (0 = root, 1 = child, etc.)."""
+        return len(self.get_ancestors())

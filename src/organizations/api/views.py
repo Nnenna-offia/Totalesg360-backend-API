@@ -646,3 +646,355 @@ class DepartmentDetailView(APIView):
                 },
                 status_code=status.HTTP_409_CONFLICT,
             )
+
+
+# ============================================================================
+# ENTERPRISE HIERARCHY VIEWS (Layer 1)
+# ============================================================================
+
+
+class OrganizationHierarchyView(APIView):
+    """
+    Retrieve the complete hierarchical tree of the user's organization.
+    
+    GET /api/v1/organizations/hierarchy/
+    
+    Organization ID is retrieved from X-ORG-ID header.
+    Returns the organization and all its subsidiaries in a nested tree structure.
+    Includes organization type (GROUP, SUBSIDIARY, FACILITY, DEPARTMENT).
+    """
+    permission_classes = [IsAuthenticated, IsOrgMember]
+    
+    def get(self, request):
+        """Get organization hierarchy tree."""
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        try:
+            from organizations.selectors.organization_hierarchy import get_organization_tree
+            from organizations.api.serializers import OrganizationTreeSerializer
+            
+            tree = get_organization_tree(org)
+            serializer = OrganizationTreeSerializer(tree)
+            return success_response(data=serializer.data)
+        except Exception as e:
+            logger.error(f"Error fetching hierarchy tree: {str(e)}")
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/internal-error",
+                    "title": "Internal Server Error",
+                    "detail": "An error occurred while fetching the organization hierarchy",
+                },
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class SubsidiariesListCreateView(APIView):
+    """
+    List all direct subsidiaries or create a new subsidiary under the user's organization.
+    
+    GET /api/v1/organizations/subsidiaries/
+    POST /api/v1/organizations/subsidiaries/
+    
+    Organization ID is retrieved from X-ORG-ID header.
+    """
+    permission_classes = [IsAuthenticated, IsOrgMember]
+    
+    def check_permissions(self, request):
+        if request.method == 'POST':
+            self.required_capability = 'org.manage'
+            self.permission_classes = [IsAuthenticated, IsOrgMember, HasCapability]
+        super().check_permissions(request)
+    
+    def get(self, request):
+        """Get all direct subsidiaries of the organization."""
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        try:
+            from organizations.api.serializers import OrganizationDetailSerializer
+            
+            # Get direct children only via reverse relationship
+            subsidiaries = org.subsidiaries.filter(is_active=True)
+            serializer = OrganizationDetailSerializer(subsidiaries, many=True)
+            return success_response(data=serializer.data)
+        except Exception as e:
+            logger.error(f"Error fetching subsidiaries: {str(e)}")
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/internal-error",
+                    "title": "Internal Server Error",
+                    "detail": "An error occurred while fetching subsidiaries",
+                },
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+    
+    def post(self, request):
+        """Create a new subsidiary under the user's organization."""
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        from organizations.api.serializers import CreateSubsidiarySerializer, OrganizationDetailSerializer
+        serializer = CreateSubsidiarySerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": serializer.errors,
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            from organizations.services.organization_hierarchy import create_subsidiary
+            
+            subsidiary = create_subsidiary(
+                parent_organization=org,
+                name=serializer.validated_data['name'],
+                sector=serializer.validated_data.get('sector'),
+                country=serializer.validated_data.get('country'),
+                organization_type=serializer.validated_data.get('organization_type', 'subsidiary')
+            )
+            
+            return success_response(
+                data=OrganizationDetailSerializer(subsidiary).data,
+                status=status.HTTP_201_CREATED
+            )
+        except ValueError as e:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": str(e),
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            logger.error(f"Error creating subsidiary: {str(e)}")
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/internal-error",
+                    "title": "Internal Server Error",
+                    "detail": "An error occurred while creating the subsidiary",
+                },
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class SubsidiaryDetailView(APIView):
+    """
+    Retrieve, update, or delete a specific subsidiary organization.
+    
+    GET /api/v1/organizations/subsidiaries/{sub_id}/
+    PATCH /api/v1/organizations/subsidiaries/{sub_id}/
+    DELETE /api/v1/organizations/subsidiaries/{sub_id}/
+    
+    Organization ID is retrieved from X-ORG-ID header.
+    """
+    permission_classes = [IsAuthenticated, IsOrgMember]
+    
+    def check_permissions(self, request):
+        if request.method in ['PATCH', 'DELETE']:
+            self.required_capability = 'organization.manage_hierarchy'
+            self.permission_classes = [IsAuthenticated, IsOrgMember, HasCapability]
+        super().check_permissions(request)
+    
+    def _get_subsidiary(self, org, subsidiary_id):
+        """Get subsidiary by ID and verify it belongs to org."""
+        try:
+            from organizations.selectors.organization_hierarchy import is_descendant_of
+            subsidiary = Organization.objects.get(id=subsidiary_id)
+            
+            # Check that subsidiary is a descendant of org
+            if not is_descendant_of(subsidiary, org):
+                return None
+            return subsidiary
+        except Organization.DoesNotExist:
+            return None
+    
+    def get(self, request, sub_id):
+        """Get subsidiary details."""
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        subsidiary = self._get_subsidiary(org, sub_id)
+        if not subsidiary:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Subsidiary not found",
+                    "detail": "Subsidiary not found or does not belong to your organization",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        from organizations.api.serializers import OrganizationDetailSerializer
+        serializer = OrganizationDetailSerializer(subsidiary)
+        return success_response(data=serializer.data)
+    
+    def patch(self, request, sub_id):
+        """Update subsidiary details."""
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        subsidiary = self._get_subsidiary(org, sub_id)
+        if not subsidiary:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Subsidiary not found",
+                    "detail": "Subsidiary not found or does not belong to your organization",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        from organizations.api.serializers import OrganizationDetailSerializer
+        serializer = OrganizationDetailSerializer(subsidiary, data=request.data, partial=True)
+        
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": serializer.errors,
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            updated_subsidiary = serializer.save()
+            return success_response(data=OrganizationDetailSerializer(updated_subsidiary).data)
+        except Exception as e:
+            logger.error(f"Error updating subsidiary: {str(e)}")
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/internal-error",
+                    "title": "Internal Server Error",
+                    "detail": "An error occurred while updating the subsidiary",
+                },
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+    
+    def delete(self, request, sub_id):
+        """Delete a subsidiary."""
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        subsidiary = self._get_subsidiary(org, sub_id)
+        if not subsidiary:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Subsidiary not found",
+                    "detail": "Subsidiary not found or does not belong to your organization",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        try:
+            subsidiary.delete()
+            return success_response(data={}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            logger.error(f"Error deleting subsidiary: {str(e)}")
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/conflict",
+                    "title": "Conflict",
+                    "detail": "Cannot delete subsidiary. It may have dependent data.",
+                },
+                status_code=status.HTTP_409_CONFLICT,
+            )
+
+
+class OrganizationStatisticsView(APIView):
+    """
+    Retrieve hierarchy statistics for the user's organization.
+    
+    GET /api/v1/organizations/statistics/
+    
+    Organization ID is retrieved from X-ORG-ID header.
+    Returns metrics like total descendants, direct children, hierarchy depth, 
+    and breakdown by organization type.
+    """
+    permission_classes = [IsAuthenticated, IsOrgMember]
+    
+    def get(self, request):
+        """Get organization hierarchy statistics."""
+        org = _get_org(request)
+        if not org:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        
+        try:
+            from organizations.selectors.organization_hierarchy import get_organization_statistics
+            from organizations.api.serializers import OrganizationStatisticsSerializer
+            
+            stats = get_organization_statistics(org)
+            serializer = OrganizationStatisticsSerializer(stats)
+            return success_response(data=serializer.data)
+        except Exception as e:
+            logger.error(f"Error fetching organization statistics: {str(e)}")
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/internal-error",
+                    "title": "Internal Server Error",
+                    "detail": "An error occurred while calculating statistics",
+                },
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

@@ -13,6 +13,12 @@ from .views import (
     DepartmentListCreateView,
     DepartmentDetailView,
 )
+from .views import (
+    OrganizationHierarchyView,
+    SubsidiariesListCreateView,
+    SubsidiaryDetailView,
+    OrganizationStatisticsView,
+)
 
 app_name = "organizations"
 
@@ -26,4 +32,11 @@ urlpatterns = [
     path("business-units/<uuid:pk>/", BusinessUnitDetailView.as_view(), name="business-unit-detail"),
     path("departments/", DepartmentListCreateView.as_view(), name="departments"),
     path("departments/<uuid:department_id>/", DepartmentDetailView.as_view(), name="department-detail"),
+    
+    # Enterprise Hierarchy Endpoints (Layer 1)
+    # Organization ID is retrieved from X-ORG-ID header (multi-tenant pattern)
+    path("hierarchy/", OrganizationHierarchyView.as_view(), name="hierarchy"),
+    path("subsidiaries/", SubsidiariesListCreateView.as_view(), name="subsidiaries"),
+    path("subsidiaries/<uuid:sub_id>/", SubsidiaryDetailView.as_view(), name="subsidiary-detail"),
+    path("statistics/", OrganizationStatisticsView.as_view(), name="statistics"),
     ]
