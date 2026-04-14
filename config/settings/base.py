@@ -264,10 +264,34 @@ REFRESH_COOKIE_HTTPONLY = True
 # Ensure logs directory exists before configuring logging
 import logging
 import logging.handlers
+import tempfile
 
-# Create logs directory with absolute path
+# Create logs directory with absolute path - with fallback and permission check
 LOG_DIR = os.path.join(str(BASE_DIR), "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
+CAN_WRITE_LOGS = False
+
+try:
+    os.makedirs(LOG_DIR, exist_ok=True)
+    # Test if we can actually write to the directory
+    test_file = os.path.join(LOG_DIR, ".write_test")
+    with open(test_file, "w") as f:
+        f.write("test")
+    os.remove(test_file)
+    CAN_WRITE_LOGS = True
+except (OSError, PermissionError, IOError):
+    # Fallback to temp directory if primary path is not writable
+    try:
+        LOG_DIR = os.path.expanduser("~/totalesg_logs")
+        os.makedirs(LOG_DIR, exist_ok=True)
+        test_file = os.path.join(LOG_DIR, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("test")
+        os.remove(test_file)
+        CAN_WRITE_LOGS = True
+    except (OSError, PermissionError, IOError):
+        # Last resort: use system temp
+        LOG_DIR = tempfile.gettempdir()
+        CAN_WRITE_LOGS = True
 
 LOGGING = {
     "version": 1,
@@ -304,22 +328,30 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose" if DEBUG else "json",
         },
-        "file": {
-            "level": "INFO",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": os.path.join(LOG_DIR, "totalesg.log"),
-            "maxBytes": 10 * 1024 * 1024,  # 10MB
-            "backupCount": 5,
-            "formatter": "verbose",
-        },
-        "error_file": {
-            "level": "ERROR",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": os.path.join(LOG_DIR, "errors.log"),
-            "maxBytes": 10 * 1024 * 1024,  # 10MB
-            "backupCount": 5,
-            "formatter": "verbose",
-        },
+        **(
+            {
+                "file": {
+                    "level": "INFO",
+                    "class": "logging.handlers.RotatingFileHandler",
+                    "filename": os.path.join(LOG_DIR, "totalesg.log"),
+                    "maxBytes": 10 * 1024 * 1024,  # 10MB
+                    "backupCount": 5,
+                    "formatter": "verbose",
+                    "delay": True,
+                },
+                "error_file": {
+                    "level": "ERROR",
+                    "class": "logging.handlers.RotatingFileHandler",
+                    "filename": os.path.join(LOG_DIR, "errors.log"),
+                    "maxBytes": 10 * 1024 * 1024,  # 10MB
+                    "backupCount": 5,
+                    "formatter": "verbose",
+                    "delay": True,
+                },
+            }
+            if CAN_WRITE_LOGS
+            else {}
+        ),
         "null": {
             "class": "logging.NullHandler",
         },
@@ -331,7 +363,7 @@ LOGGING = {
             "propagate": False,
         },
         "django.request": {
-            "handlers": ["console", "error_file"],
+            "handlers": (["console", "error_file"] if CAN_WRITE_LOGS else ["console"]),
             "level": "WARNING",
             "propagate": False,
         },
@@ -347,50 +379,50 @@ LOGGING = {
         },
         # Application loggers
         "accounts": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": os.getenv("APP_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         "organizations": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": os.getenv("APP_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         "roles": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": os.getenv("APP_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         "common": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": os.getenv("APP_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         # Namespace loggers for structured logging
         "services": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": os.getenv("APP_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         "api": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": os.getenv("APP_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         "tasks": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": os.getenv("APP_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
         # Celery
         "celery": {
-            "handlers": ["console", "file"],
+            "handlers": (["console", "file"] if CAN_WRITE_LOGS else ["console"]),
             "level": "INFO",
             "propagate": False,
         },
     },
     "root": {
-        "handlers": ["console", "file", "error_file"],
+        "handlers": (["console", "file", "error_file"] if CAN_WRITE_LOGS else ["console"]),
         "level": os.getenv("ROOT_LOG_LEVEL", "INFO"),
     },
 }
