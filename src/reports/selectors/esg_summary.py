@@ -1,4 +1,4 @@
-                        """ESG Summary Report Selector - aggregates ESG scores, readiness, gaps, and recommendations."""
+"""ESG Summary Report Selector - aggregates ESG scores, readiness, gaps, and recommendations."""
 from typing import Dict, Any, Optional
 
 from organizations.models import Organization
