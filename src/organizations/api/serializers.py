@@ -83,6 +83,8 @@ class OrganizationSettingsSerializer(serializers.ModelSerializer):
 class OrganizationDetailSerializer(serializers.ModelSerializer):
     """Serializer for Organization with basic details."""
     
+    logo = serializers.SerializerMethodField()
+    
     class Meta:
         model = Organization
         fields = [
@@ -98,9 +100,30 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
             'is_active'
         ]
         read_only_fields = ['id']
+    
+    def get_logo(self, obj):
+        """Return logo URL from organization or fallback to profile logo."""
+        if obj.logo:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
+        
+        # Fallback to profile logo if organization logo is null
+        try:
+            profile = obj.profile
+            if profile and profile.logo:
+                request = self.context.get('request')
+                return request.build_absolute_uri(profile.logo.url) if request else profile.logo.url
+        except:
+            pass
+        
+        return None
 
 
 class OrganizationProfileSerializer(serializers.ModelSerializer):
+    """Serializer for OrganizationProfile with logo URL fallback."""
+    
+    logo = serializers.SerializerMethodField()
+    
     class Meta:
         model = OrganizationProfile
         fields = [
@@ -113,6 +136,13 @@ class OrganizationProfileSerializer(serializers.ModelSerializer):
             'fiscal_year_end_month',
             'cac_document',
         ]
+    
+    def get_logo(self, obj):
+        """Return logo URL as absolute path."""
+        if obj.logo:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
+        return None
 
 
 class BusinessUnitSerializer(serializers.ModelSerializer):
@@ -125,36 +155,71 @@ class BusinessUnitSerializer(serializers.ModelSerializer):
 
 
 class OrganizationSettingsDetailSerializer(serializers.Serializer):
-    """Return structure split into company, general, security."""
-
-    company = OrganizationProfileSerializer(read_only=True)
-    general = OrganizationSettingsSerializer(read_only=True)
+    """
+    Comprehensive organization settings response.
+    
+    Returns all organization data organized by category:
+    - organization: Basic org info (name, sector, country, etc.)
+    - profile: Company profile data (registered name, CAC number, logo, operational locations)
+    - preferences: User/system preferences (language, timezone, theme, notifications)
+    - security: Security settings (2FA, encryption, compliance checks)
+    - compliance: Compliance-related settings (reporting frequency, auto-compliance)
+    - departments: List of active departments
+    - frameworks: List of assigned regulatory frameworks
+    
+    Frontend can fetch this once and update individual sections via PATCH endpoints:
+    - PATCH /api/v1/organizations/settings/profile/
+    - PATCH /api/v1/organizations/settings/preferences/
+    - PATCH /api/v1/organizations/settings/security/
+    - PATCH /api/v1/organizations/settings/compliance/
+    """
+    
+    organization = OrganizationDetailSerializer(read_only=True)
+    profile = OrganizationProfileSerializer(read_only=True)
+    preferences = serializers.SerializerMethodField()
     security = serializers.SerializerMethodField()
+    compliance = serializers.SerializerMethodField()
     departments = DepartmentSerializer(many=True, read_only=True)
     frameworks = OrganizationFrameworkSerializer(many=True, read_only=True)
-
-    def get_security(self, obj):
-        # reuse OrganizationSettingsSerializer but expose only security fields
+    
+    def get_preferences(self, obj):
+        """Extract user preference settings."""
         settings = obj.get('settings')
         if not settings:
             return None
-        sec = {
+        return {
+            'system_language': settings.system_language,
+            'timezone': settings.timezone,
+            'date_format': settings.date_format,
+            'admin_theme': settings.admin_theme,
+            'notifications_enabled': settings.notifications_enabled,
+            'system_update_frequency': settings.system_update_frequency,
+            'export_formats': settings.export_formats,
+        }
+    
+    def get_security(self, obj):
+        """Extract security settings."""
+        settings = obj.get('settings')
+        if not settings:
+            return None
+        return {
             'security_checks_frequency': settings.security_checks_frequency,
             'require_2fa': settings.require_2fa,
             'encrypt_stored_data': settings.encrypt_stored_data,
             'encryption_method': settings.encryption_method,
-            'auto_compliance_enabled': settings.auto_compliance_enabled,
         }
-        return sec
-
-
-class OrganizationSettingsDetailSerializer(serializers.Serializer):
-    """Complete serializer for organization settings view."""
     
-    organization = OrganizationDetailSerializer(read_only=True)
-    settings = OrganizationSettingsSerializer(read_only=True)
-    departments = DepartmentSerializer(many=True, read_only=True)
-    frameworks = OrganizationFrameworkSerializer(many=True, read_only=True)
+    def get_compliance(self, obj):
+        """Extract compliance-related settings."""
+        settings = obj.get('settings')
+        if not settings:
+            return None
+        return {
+            'local_reporting_frequency': settings.local_reporting_frequency,
+            'global_reporting_frequency': settings.global_reporting_frequency,
+            'auto_compliance_enabled': settings.auto_compliance_enabled,
+            'currency': settings.currency,
+        }
 
 
 class GeneralSettingsUpdateSerializer(serializers.Serializer):
