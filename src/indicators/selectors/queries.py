@@ -3,6 +3,7 @@ from django.db.models import OuterRef, Subquery, Exists, Case, When, Value, Bool
 
 from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
 from organizations.models import OrganizationFramework
+from organizations.selectors.frameworks import get_active_frameworks
 
 
 def get_framework_indicators(framework) -> List[FrameworkIndicator]:
@@ -18,8 +19,7 @@ def get_org_effective_indicators(org):
       - is_active_effective: boolean
       - overridden: boolean (True if org has an explicit OrganizationIndicator)
     """
-    # enabled frameworks for org
-    enabled_fws = OrganizationFramework.objects.filter(organization=org, is_enabled=True).values('framework')
+    enabled_fws = get_active_frameworks(org).values('id')
 
     # Subquery: org override is_required
     org_override_qs = OrganizationIndicator.objects.filter(organization=org, indicator=OuterRef('pk'))
@@ -34,17 +34,26 @@ def get_org_effective_indicators(org):
     )
 
     qs = (
-        Indicator.objects.all()
+        Indicator.objects.filter(
+            is_active=True,
+            framework_mappings__framework__in=enabled_fws,
+        )
+        .distinct()
         .annotate(
             override_required=override_required,
             override_active=override_active,
-            overridden=Case(When(override_required__isnull=False, then=Value(True)), default=Value(False), output_field=BooleanField()),
+            override_exists=override_exists,
             required_by_framework=required_by_framework,
         )
     )
 
     # compute effective flags in Python-friendly annotation via Case
     qs = qs.annotate(
+        overridden=Case(
+            When(override_exists=True, then=Value(True)),
+            default=Value(False),
+            output_field=BooleanField(),
+        ),
         is_required_effective=Case(
             When(override_required__isnull=False, then=F('override_required')),
             When(required_by_framework=True, then=Value(True)),
@@ -58,7 +67,24 @@ def get_org_effective_indicators(org):
         ),
     )
 
+    try:
+        settings = org.esg_settings
+    except Exception:
+        settings = None
+
+    if settings:
+        if not settings.enable_environmental:
+            qs = qs.exclude(pillar="ENV")
+        if not settings.enable_social:
+            qs = qs.exclude(pillar="SOC")
+        if not settings.enable_governance:
+            qs = qs.exclude(pillar="GOV")
+
     return qs
+
+
+def get_active_indicators(org):
+    return get_org_effective_indicators(org).filter(is_active_effective=True).distinct()
 
 
 def get_indicator_emission_value(indicator_code: str, org=None, reporting_period=None):

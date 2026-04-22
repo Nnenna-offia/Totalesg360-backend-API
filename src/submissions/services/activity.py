@@ -24,8 +24,8 @@ def submit_activity_value(*, org, user, activity_type_id: str, reporting_period_
     except ActivityType.DoesNotExist:
         raise ValidationError("ActivityType not found")
 
-    # Resolve reporting period: either provided explicitly or derived from the
-    # activity_type -> indicator -> target -> active reporting period.
+    # Resolve reporting period from active ESG settings unless an internal caller
+    # explicitly provides one.
     period = None
     if reporting_period_id:
         try:
@@ -33,11 +33,7 @@ def submit_activity_value(*, org, user, activity_type_id: str, reporting_period_
         except ReportingPeriod.DoesNotExist:
             raise ValidationError(detail="ReportingPeriod not found for organization")
     else:
-        # Find a target associated with the activity's indicator
-        target = TargetGoal.objects.filter(organization=org, indicator=activity_type.indicator, status=TargetGoal.Status.ACTIVE).first()
-        if not target:
-            raise ValidationError("No active reporting period found for this target")
-        period = get_or_raise_active_reporting_period(org, target)
+        period = get_or_raise_active_reporting_period(org)
 
     if period.status != ReportingPeriod.Status.OPEN:
         raise PermissionDenied(detail="Reporting period is not open for edits")

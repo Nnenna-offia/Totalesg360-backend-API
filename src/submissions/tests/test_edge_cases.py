@@ -7,7 +7,8 @@ from roles.models.capability import Capability
 from roles.models.role import Role
 from roles.models.role_capability import RoleCapability
 from organizations.models.membership import Membership
-from indicators.models import Indicator, OrganizationIndicator
+from indicators.models import FrameworkIndicator, Indicator, OrganizationIndicator
+from organizations.models import OrganizationFramework, RegulatoryFramework
 from submissions.models import ReportingPeriod, DataSubmission
 from submissions.services import submit_indicator_value
 
@@ -23,6 +24,10 @@ class EdgeCaseTests(TestCase):
 
         self.ind_num = Indicator.objects.create(code="E1", name="Num", pillar="ENV", data_type=Indicator.DataType.NUMBER)
         self.ind_bool = Indicator.objects.create(code="E2", name="Bool", pillar="ENV", data_type=Indicator.DataType.BOOLEAN)
+        self.framework = RegulatoryFramework.objects.create(code="EDGE-FW", name="Edge Framework", jurisdiction="INTERNATIONAL")
+        OrganizationFramework.objects.create(organization=self.org, framework=self.framework, is_enabled=True)
+        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind_num, is_required=True, display_order=1)
+        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind_bool, is_required=True, display_order=2)
         OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind_num, is_active=True)
         OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind_bool, is_active=True)
 
@@ -41,4 +46,10 @@ class EdgeCaseTests(TestCase):
         self.period.status = ReportingPeriod.Status.LOCKED
         self.period.save()
         with self.assertRaises(Exception):
+            submit_indicator_value(org=self.org, user=self.user, indicator_id=str(self.ind_num.id), reporting_period_id=str(self.period.id), value=1)
+
+    def test_submit_indicator_outside_active_framework_rejected(self):
+        self.framework.is_active = False
+        self.framework.save(update_fields=['is_active'])
+        with self.assertRaises(ValidationError):
             submit_indicator_value(org=self.org, user=self.user, indicator_id=str(self.ind_num.id), reporting_period_id=str(self.period.id), value=1)

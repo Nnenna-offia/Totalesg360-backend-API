@@ -7,7 +7,8 @@ from roles.models.capability import Capability
 from roles.models.role import Role
 from roles.models.role_capability import RoleCapability
 from organizations.models.membership import Membership
-from indicators.models import Indicator, OrganizationIndicator
+from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from organizations.models import RegulatoryFramework, OrganizationFramework
 from submissions.models import ReportingPeriod, DataSubmission
 from submissions.services import submit_indicator_value, finalize_period, approve_submission
 
@@ -31,6 +32,9 @@ class SubmissionServicesTests(TestCase):
 
         # indicator and org override
         self.ind = Indicator.objects.create(code="I001", name="Indic", pillar="ENV", data_type=Indicator.DataType.NUMBER)
+        self.framework = RegulatoryFramework.objects.create(code="SVC-FW", name="Service Framework", jurisdiction="INTERNATIONAL")
+        OrganizationFramework.objects.create(organization=self.org, framework=self.framework, is_enabled=True)
+        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind, is_required=True, display_order=1)
         OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind, is_active=True)
 
         # reporting period

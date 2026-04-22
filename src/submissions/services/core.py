@@ -4,10 +4,11 @@ from django.utils import timezone
 from django.core.exceptions import PermissionDenied, ValidationError
 
 from accounts.selectors.org_context import get_user_membership_for_org
-from indicators.selectors.queries import get_org_effective_indicators
+from indicators.selectors.queries import get_active_indicators, get_org_effective_indicators
 from organizations.models import Facility
 from submissions.models import DataSubmission, ReportingPeriod
 from indicators.models import Indicator
+from submissions.services.reporting_period import get_active_reporting_period
 
 
 CAP_SUBMIT = "submit_indicator"  # capability code used in tests/roles
@@ -35,7 +36,7 @@ def _user_has_capability(user, org, cap_code: str) -> bool:
 
 
 def _validate_indicator_active_for_org(org, indicator: Indicator) -> bool:
-    return get_org_effective_indicators(org).filter(pk=indicator.pk, is_active_effective=True).exists()
+    return get_active_indicators(org).filter(pk=indicator.pk).exists()
 
 
 def _validate_facility_belongs(org, facility: Optional[Facility]) -> None:
@@ -81,7 +82,7 @@ def _normalize_and_assign_values(indicator: Indicator, value) -> dict:
     raise ValidationError("Unsupported indicator data_type")
 
 
-def submit_indicator_value(*, org, user, indicator_id: str, reporting_period_id: str, facility_id: Optional[str] = None, value=None, metadata: Optional[dict] = None) -> Tuple[DataSubmission, bool]:
+def submit_indicator_value(*, org, user, indicator_id: str, reporting_period_id: Optional[str] = None, facility_id: Optional[str] = None, value=None, metadata: Optional[dict] = None) -> Tuple[DataSubmission, bool]:
     """Validate and upsert a DataSubmission record.
 
     Returns (instance, created_bool).
@@ -99,10 +100,15 @@ def submit_indicator_value(*, org, user, indicator_id: str, reporting_period_id:
             "Please submit activity data instead."
         )
 
-    try:
-        period = ReportingPeriod.objects.get(id=reporting_period_id, organization=org)
-    except ReportingPeriod.DoesNotExist:
-        raise ValidationError("ReportingPeriod not found for organization")
+    if reporting_period_id:
+        try:
+            period = ReportingPeriod.objects.get(id=reporting_period_id, organization=org)
+        except ReportingPeriod.DoesNotExist:
+            raise ValidationError("ReportingPeriod not found for organization")
+    else:
+        period = get_active_reporting_period(org)
+        if not period:
+            raise ValidationError("No active reporting period found for organization")
 
     if period.status != ReportingPeriod.Status.OPEN:
         raise PermissionDenied("Reporting period is not open for edits")

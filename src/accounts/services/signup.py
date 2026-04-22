@@ -15,6 +15,7 @@ from organizations.models import (
     RegulatoryFramework,
     OrganizationFramework,
 )
+from organizations.services.create_organization import create_organization
 from organizations.selectors.metadata import organization_exists_by_name
 from roles.models import Role
 
@@ -215,11 +216,12 @@ def _create_organization(
     *, name: str, sector: str, country: str, primary_reporting_focus: str
 ) -> Organization:
     """Create organization."""
-    organization = Organization.objects.create(
+    organization = create_organization(
         name=name,
         sector=sector,
         country=country,
         primary_reporting_focus=primary_reporting_focus,
+        entity_type=Organization.EntityType.GROUP,
         is_active=True,
     )
     logger.info(
@@ -290,6 +292,7 @@ def _assign_regulatory_frameworks(
         nigerian_frameworks = RegulatoryFramework.objects.filter(
             jurisdiction=RegulatoryFramework.Jurisdiction.NIGERIA,
             is_active=True,
+            is_system=True,
         ).filter(
             models.Q(sector="") | models.Q(sector=sector)
         )
@@ -304,6 +307,7 @@ def _assign_regulatory_frameworks(
         international_frameworks = RegulatoryFramework.objects.filter(
             jurisdiction=RegulatoryFramework.Jurisdiction.INTERNATIONAL,
             is_active=True,
+            is_system=True,
             sector="",  # Cross-sector only for signup
         )
         frameworks_to_assign.extend(international_frameworks)

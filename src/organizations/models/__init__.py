@@ -7,6 +7,7 @@ from .membership import Membership
 from .regulatory_framework import RegulatoryFramework
 from .organization_framework import OrganizationFramework
 from .business_unit import BusinessUnit
+from .esg_settings import OrganizationESGSettings
 
 __all__ = [
     'Organization',
@@ -17,5 +18,6 @@ __all__ = [
     'Membership',
     'RegulatoryFramework',
     'OrganizationFramework',
-    'BusinessUnit'
+    'BusinessUnit',
+    'OrganizationESGSettings'
 ]

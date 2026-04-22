@@ -91,7 +91,6 @@ class ActivityTypeSerializer(serializers.ModelSerializer):
 
 class ActivitySubmissionCreateSerializer(serializers.Serializer):
 	activity_type_id = serializers.UUIDField()
-	reporting_period_id = serializers.UUIDField()
 	facility_id = serializers.UUIDField(required=False, allow_null=True)
 	value = serializers.DecimalField(max_digits=18, decimal_places=6)
 

@@ -7,8 +7,9 @@ from decimal import Decimal
 from accounts.models import User
 from organizations.models import (
     Organization, OrganizationFramework, RegulatoryFramework,
-    Facility
+    Facility, Membership
 )
+from roles.models import Role
 from targets.models import TargetGoal
 from indicators.models import Indicator, IndicatorValue, OrganizationIndicator
 from submissions.models import ReportingPeriod, DataSubmission
@@ -126,6 +127,7 @@ class DemoDataSeeder:
                 self._step_1_get_user()
                 self._step_2_create_root_organization()
                 self._step_3_create_subsidiaries()
+                self._step_3b_create_memberships()
                 
                 self.stdout.write(self.style.HTTP_INFO("\n📋 PHASE 2: Framework & Governance"))
                 self._step_4_assign_frameworks()
@@ -166,7 +168,7 @@ class DemoDataSeeder:
         org, created = Organization.objects.get_or_create(
             name="TGI Group",
             defaults={
-                "organization_type": Organization.OrganizationType.GROUP,
+                "entity_type": Organization.EntityType.GROUP,
                 "registered_name": "TGI Group Limited",
                 "company_size": "enterprise",
                 "sector": "manufacturing",
@@ -176,7 +178,7 @@ class DemoDataSeeder:
         )
         
         if created:
-            self.stdout.write(f"  ✓ Created: {org.name} (ID: {org.id}) as {org.organization_type}")
+            self.stdout.write(f"  ✓ Created: {org.name} (ID: {org.id}) as {org.entity_type}")
         else:
             self.stdout.write(f"  ✓ Using existing: {org.name} (ID: {org.id})")
         
@@ -200,7 +202,7 @@ class DemoDataSeeder:
                 name=name,
                 defaults={
                     "parent": self.root_org,
-                    "organization_type": Organization.OrganizationType.SUBSIDIARY,
+                    "entity_type": Organization.EntityType.SUBSIDIARY,
                     "registered_name": name,
                     "company_size": "large",
                     "sector": "manufacturing" if name != "Titan Trust Bank" else "finance",
@@ -215,6 +217,38 @@ class DemoDataSeeder:
                 self.stdout.write(f"  ✓ Using existing: {org.name} (ID: {org.id})")
             
             self.subsidiaries.append(org)
+
+    def _step_3b_create_memberships(self):
+        """Step 3b: Assign user to organizations with admin role."""
+        self.stdout.write("  3️⃣ᵇ Assigning user to organizations...")
+        
+        # Get or create admin role
+        admin_role, created = Role.objects.get_or_create(
+            code="ADMIN",
+            defaults={
+                "name": "Administrator",
+                "description": "Full organization access"
+            }
+        )
+        
+        all_orgs = [self.root_org] + self.subsidiaries
+        membership_count = 0
+        
+        for org in all_orgs:
+            membership, created = Membership.objects.get_or_create(
+                user=self.user,
+                organization=org,
+                role=admin_role,
+                defaults={
+                    "is_active": True,
+                    "added_by": self.user,
+                }
+            )
+            
+            if created:
+                membership_count += 1
+        
+        self.stdout.write(f"  ✓ User assigned to {membership_count}/{len(all_orgs)} organizations as {admin_role.name}")
 
     def _step_4_assign_frameworks(self):
         """Step 4: Assign frameworks to all organizations."""
@@ -711,6 +745,12 @@ class DemoDataSeeder:
         self.stdout.write(f"Subsidiaries: {len(self.subsidiaries)}")
         for sub in self.subsidiaries:
             self.stdout.write(f"  • {sub.name}")
+        
+        # Show memberships
+        memberships = Membership.objects.filter(user=self.user).count()
+        self.stdout.write(f"\nMemberships: {memberships}")
+        for membership in Membership.objects.filter(user=self.user).select_related('organization', 'role'):
+            self.stdout.write(f"  • {membership.organization.name} ({membership.role.name})")
         
         self.stdout.write(f"\nFrameworks Assigned: {len(set(self.frameworks))}")
         for fw in set(self.frameworks):

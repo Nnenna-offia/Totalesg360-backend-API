@@ -37,7 +37,6 @@ class SubmitIndicatorAPIView(APIView):
 				org=org,
 				user=request.user,
 				indicator_id=str(data["indicator_id"]),
-				reporting_period_id=str(data["reporting_period_id"]),
 				facility_id=str(data.get("facility_id")) if data.get("facility_id") else None,
 				value=data.get("value"),
 				metadata=data.get("metadata"),

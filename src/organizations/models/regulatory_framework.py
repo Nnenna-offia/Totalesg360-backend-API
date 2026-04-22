@@ -41,6 +41,10 @@ class RegulatoryFramework(BaseModel):
         default=True,
         help_text="Whether framework is available for selection"
     )
+    is_system = models.BooleanField(
+        default=True,
+        help_text="Whether this framework is system-managed and not user-created"
+    )
     priority = models.IntegerField(
         default=0,
         help_text="Display/assignment priority (higher = more important)"

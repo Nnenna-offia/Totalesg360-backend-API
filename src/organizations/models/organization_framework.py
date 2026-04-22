@@ -60,3 +60,20 @@ class OrganizationFramework(BaseModel):
     def __str__(self):
         primary = " [PRIMARY]" if self.is_primary else ""
         return f"{self.organization.name} → {self.framework.code}{primary}"
+
+    @property
+    def is_active(self):
+        return self.is_enabled
+
+    @is_active.setter
+    def is_active(self, value):
+        self.is_enabled = value
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if update_fields:
+            kwargs["update_fields"] = [
+                "is_enabled" if field_name == "is_active" else field_name
+                for field_name in update_fields
+            ]
+        return super().save(*args, **kwargs)

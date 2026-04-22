@@ -21,6 +21,8 @@ class ReportingPeriod(BaseModel):
         ANNUAL = "ANNUAL", "Annual"
         CUSTOM = "CUSTOM", "Custom"
 
+    Frequency = PeriodType
+
     organization = models.ForeignKey(
         "organizations.Organization",
         on_delete=models.CASCADE,
@@ -73,6 +75,13 @@ class ReportingPeriod(BaseModel):
         db_table = "submissions_reportingperiod"
         app_label = "submissions"
         unique_together = [("organization", "name")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "period_type"],
+                condition=models.Q(is_active=True),
+                name="unique_active_period_per_frequency",
+            )
+        ]
         indexes = [
             models.Index(fields=["organization", "status"]),
             models.Index(fields=["organization", "period_type"]),

@@ -8,7 +8,8 @@ from roles.models.capability import Capability
 from roles.models.role import Role
 from roles.models.role_capability import RoleCapability
 from organizations.models.membership import Membership
-from indicators.models import Indicator, OrganizationIndicator
+from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from organizations.models import RegulatoryFramework, OrganizationFramework
 from submissions.models import ReportingPeriod, DataSubmission
 
 
@@ -30,6 +31,9 @@ class SubmissionsAPITests(TestCase):
         Membership.objects.create(user=self.user, organization=self.org, role=self.role)
 
         self.ind = Indicator.objects.create(code="API001", name="API Indic", pillar="ENV", data_type=Indicator.DataType.NUMBER)
+        self.framework = RegulatoryFramework.objects.create(code="API-FW", name="API Framework", jurisdiction="INTERNATIONAL")
+        OrganizationFramework.objects.create(organization=self.org, framework=self.framework, is_enabled=True)
+        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind, is_required=True, display_order=1)
         OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind, is_active=True)
 
         self.period = ReportingPeriod.objects.create(organization=self.org, year=2025)
@@ -42,7 +46,6 @@ class SubmissionsAPITests(TestCase):
         url = reverse('submit-indicator')
         payload = {
             "indicator_id": str(self.ind.id),
-            "reporting_period_id": str(self.period.id),
             "value": 12,
         }
         resp = self.client.post(url, payload, format='json')

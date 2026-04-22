@@ -27,11 +27,11 @@ def get_organization_tree(organization: Organization) -> Dict[str, Any]:
         }
     """
     def build_tree(org: Organization) -> Dict[str, Any]:
-        children = org.subsidiaries.filter(is_active=True).values_list(
-            'id', 'name', 'organization_type'
+        children = org.get_children().filter(is_active=True).values_list(
+            'id', 'name', 'entity_type'
         )
         
-        subsidiaries = [
+        child_nodes = [
             build_tree(Organization.objects.get(id=child_id))
             for child_id, _, _ in children
         ]
@@ -39,9 +39,16 @@ def get_organization_tree(organization: Organization) -> Dict[str, Any]:
         return {
             "id": str(org.id),
             "name": org.name,
-            "organization_type": org.get_organization_type_display(),
-            "organization_type_key": org.organization_type,
-            "subsidiaries": subsidiaries,
+            "entity_type": org.entity_type,
+            "entity_type_display": org.get_entity_type_display(),
+            "organization_type": org.entity_type,
+            "organization_type_display": org.get_entity_type_display(),
+            "parent": (
+                {"id": str(org.parent.id), "name": org.parent.name}
+                if org.parent else None
+            ),
+            "children": child_nodes,
+            "subsidiaries": child_nodes,
         }
     
     return build_tree(organization)
@@ -50,7 +57,8 @@ def get_organization_tree(organization: Organization) -> Dict[str, Any]:
 def get_organization_descendants(
     organization: Organization,
     include_self: bool = False,
-    organization_types: List[str] = None
+    entity_types: List[str] = None,
+    organization_types: List[str] = None,
 ) -> QuerySet:
     """
     Get all descendant organizations (children, grandchildren, etc.).
@@ -63,7 +71,8 @@ def get_organization_descendants(
     Args:
         organization: Parent organization
         include_self: Include parent in results
-        organization_types: Filter by specific types (optional)
+        entity_types: Filter by specific types (optional)
+        organization_types: Backward-compatible alias for entity_types
     
     Returns:
         QuerySet of Organizations
@@ -84,8 +93,9 @@ def get_organization_descendants(
     ids = [org.id for org in descendants_list]
     qs = Organization.objects.filter(id__in=ids, is_active=True)
     
-    if organization_types:
-        qs = qs.filter(organization_type__in=organization_types)
+    resolved_entity_types = entity_types or organization_types
+    if resolved_entity_types:
+        qs = qs.filter(entity_type__in=resolved_entity_types)
     
     return qs
 
@@ -125,7 +135,7 @@ def get_organization_siblings(organization: Organization) -> QuerySet:
         # Root org - get all root orgs
         return Organization.objects.filter(parent__isnull=True, is_active=True)
     
-    return organization.parent.subsidiaries.filter(is_active=True)
+    return organization.parent.children.filter(is_active=True)
 
 
 def get_organization_depth(organization: Organization) -> int:
@@ -144,7 +154,8 @@ def get_organization_depth(organization: Organization) -> int:
 def get_organizations_by_level(
     parent: Organization = None,
     level: int = 1,
-    organization_type: str = None
+    entity_type: str = None,
+    organization_type: str = None,
 ) -> QuerySet:
     """
     Get organizations at specific depth/level.
@@ -152,7 +163,8 @@ def get_organizations_by_level(
     Args:
         parent: Parent org to search within (None = all roots)
         level: Depth level (0=roots, 1=children, 2=grandchildren)
-        organization_type: Filter by type (optional)
+        entity_type: Filter by type (optional)
+        organization_type: Backward-compatible alias for entity_type
     
     Returns:
         QuerySet of Organizations at that level
@@ -162,7 +174,7 @@ def get_organizations_by_level(
         subsidiaries = get_organizations_by_level(
             parent=group_org,
             level=1,
-            organization_type='subsidiary'
+            entity_type='subsidiary'
         )
     """
     if parent is None:
@@ -172,8 +184,9 @@ def get_organizations_by_level(
         # Direct children of parent
         qs = Organization.objects.filter(parent=parent, is_active=True)
     
-    if organization_type:
-        qs = qs.filter(organization_type=organization_type)
+    resolved_entity_type = entity_type or organization_type
+    if resolved_entity_type:
+        qs = qs.filter(entity_type=resolved_entity_type)
     
     return qs
 
@@ -196,18 +209,28 @@ def get_organization_statistics(organization: Organization) -> Dict[str, Any]:
     descendants = get_organization_descendants(organization, include_self=False)
     
     type_counts = {}
-    for org_type, _ in Organization.OrganizationType.choices:
-        count = descendants.filter(organization_type=org_type).count()
+    for org_type, _ in Organization.EntityType.choices:
+        count = descendants.filter(entity_type=org_type).count()
         if count > 0:
             type_counts[org_type] = count
     
     return {
         "total_descendants": descendants.count(),
-        "direct_children": organization.subsidiaries.filter(is_active=True).count(),
+        "direct_children": organization.children.filter(is_active=True).count(),
         "depth": organization.hierarchy_level,
+        "hierarchy_depth": organization.hierarchy_level,
+        "entity_type": organization.get_entity_type_display(),
         "organization_type": organization.get_organization_type_display(),
         "type_breakdown": type_counts,
     }
+
+
+def get_subsidiaries(organization: Organization) -> QuerySet:
+    """Return direct subsidiary children for a given organization."""
+    return organization.children.filter(
+        entity_type=Organization.EntityType.SUBSIDIARY,
+        is_active=True,
+    )
 
 
 def is_descendant_of(child: Organization, potential_parent: Organization) -> bool:

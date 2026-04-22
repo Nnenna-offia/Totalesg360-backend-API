@@ -16,11 +16,13 @@ class Organization(BaseModel):
         INTERNATIONAL = "INTERNATIONAL", "International Frameworks Only"
         HYBRID = "HYBRID", "Nigeria + International (Hybrid)"
     
-    class OrganizationType(models.TextChoices):
-        GROUP = "group", "Group / Parent Company"
-        SUBSIDIARY = "subsidiary", "Subsidiary / Business Unit"
-        FACILITY = "facility", "Facility / Operating Site"
-        DEPARTMENT = "department", "Department / Division"
+    class EntityType(models.TextChoices):
+        GROUP = "group", "Group"
+        SUBSIDIARY = "subsidiary", "Subsidiary"
+        FACILITY = "facility", "Facility"
+        DEPARTMENT = "department", "Department"
+
+    OrganizationType = EntityType
     
     # Hierarchy fields
     parent = models.ForeignKey(
@@ -33,10 +35,10 @@ class Organization(BaseModel):
         help_text="Parent organization (for subsidiaries and business units)"
     )
     
-    organization_type = models.CharField(
+    entity_type = models.CharField(
         max_length=20,
-        choices=OrganizationType.choices,
-        default=OrganizationType.SUBSIDIARY,
+        choices=EntityType.choices,
+        blank=True,
         db_index=True,
         help_text="Organization type in hierarchy: Group, Subsidiary, Facility, Department"
     )
@@ -114,15 +116,80 @@ class Organization(BaseModel):
             models.Index(fields=['sector', 'is_active']),
             models.Index(fields=['primary_reporting_focus']),
             models.Index(fields=['parent']),
-            models.Index(fields=['organization_type']),
-            models.Index(fields=['parent', 'organization_type']),
+            models.Index(fields=['entity_type']),
+            models.Index(fields=['parent', 'entity_type']),
         ]
+
+    def __init__(self, *args, **kwargs):
+        if 'organization_type' in kwargs and 'entity_type' not in kwargs:
+            kwargs['entity_type'] = kwargs.pop('organization_type')
+        super().__init__(*args, **kwargs)
 
     def __str__(self):
         """Return organization name with hierarchy context."""
         if self.parent:
-            return f"{self.name} (subsidiary of {self.parent.name})"
+            return f"{self.name} (child of {self.parent.name})"
         return self.name
+
+    @property
+    def organization_type(self):
+        return self.entity_type
+
+    @organization_type.setter
+    def organization_type(self, value):
+        self.entity_type = value
+
+    @property
+    def children(self):
+        return self.subsidiaries
+
+    @property
+    def frameworks(self):
+        return self.framework_assignments
+
+    @property
+    def organization_frameworks(self):
+        return self.framework_assignments
+
+    def get_organization_type_display(self):
+        return self.get_entity_type_display()
+
+    def _default_entity_type(self):
+        return self.EntityType.SUBSIDIARY if self.parent_id else self.EntityType.GROUP
+
+    def clean(self):
+        from organizations.services.hierarchy_validation import validate_hierarchy
+
+        if not self.entity_type:
+            self.entity_type = self._default_entity_type()
+        validate_hierarchy(self.parent, self.entity_type, instance=self)
+
+    def save(self, *args, **kwargs):
+        from organizations.services.hierarchy_validation import validate_hierarchy
+
+        update_fields = kwargs.get('update_fields')
+        if update_fields:
+            normalized_fields = []
+            for field_name in update_fields:
+                normalized_fields.append('entity_type' if field_name == 'organization_type' else field_name)
+            kwargs['update_fields'] = normalized_fields
+
+        if not self.entity_type:
+            self.entity_type = self._default_entity_type()
+        validate_hierarchy(self.parent, self.entity_type, instance=self)
+        return super().save(*args, **kwargs)
+
+    def is_group(self):
+        return self.entity_type == self.EntityType.GROUP
+
+    def is_subsidiary(self):
+        return self.entity_type == self.EntityType.SUBSIDIARY
+
+    def get_children(self):
+        return self.children.all()
+
+    def get_subsidiaries(self):
+        return self.children.filter(entity_type=self.EntityType.SUBSIDIARY)
     
     def get_ancestors(self):
         """Get all parent organizations up the hierarchy."""
@@ -138,7 +205,7 @@ class Organization(BaseModel):
         descendants = []
         if include_self:
             descendants.append(self)
-        for child in self.subsidiaries.all():
+        for child in self.children.all():
             descendants.append(child)
             descendants.extend(child.get_descendants())
         return descendants

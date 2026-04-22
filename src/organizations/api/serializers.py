@@ -1,13 +1,58 @@
 """Serializers for organization settings API."""
 from rest_framework import serializers
+from submissions.models.reporting_period import ReportingPeriod
 from organizations.models import (
     Organization,
     OrganizationSettings,
     OrganizationProfile,
     Department,
-    OrganizationFramework
+    OrganizationFramework,
+    OrganizationESGSettings,
+    RegulatoryFramework,
 )
 from organizations.models import BusinessUnit
+from organizations.services.hierarchy_validation import validate_hierarchy
+
+
+class ParentOrganizationSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
+class HierarchyValidationMixin:
+    def to_internal_value(self, data):
+        mutable_data = dict(data)
+        if 'organization_type' in mutable_data and 'entity_type' not in mutable_data:
+            mutable_data['entity_type'] = mutable_data.pop('organization_type')
+
+        parent_id = mutable_data.pop('parent_id', serializers.empty)
+        internal_data = super().to_internal_value(mutable_data)
+
+        if parent_id is not serializers.empty:
+            if parent_id in (None, ''):
+                internal_data['parent'] = None
+            else:
+                try:
+                    internal_data['parent'] = Organization.objects.get(id=parent_id)
+                except Organization.DoesNotExist as exc:
+                    raise serializers.ValidationError({'parent_id': 'Parent organization not found'}) from exc
+
+        return internal_data
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        parent = attrs.get('parent', getattr(self.instance, 'parent', None))
+        entity_type = attrs.get('entity_type', getattr(self.instance, 'entity_type', None))
+
+        if not entity_type:
+            entity_type = Organization.EntityType.SUBSIDIARY if parent else Organization.EntityType.GROUP
+            attrs['entity_type'] = entity_type
+
+        try:
+            validate_hierarchy(parent, entity_type, instance=self.instance)
+        except Exception as exc:
+            raise serializers.ValidationError({'non_field_errors': [str(exc)]}) from exc
+        return attrs
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -35,21 +80,61 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class OrganizationFrameworkSerializer(serializers.ModelSerializer):
     """Serializer for OrganizationFramework with framework details."""
     
+    framework_id = serializers.UUIDField(source='framework.id', read_only=True)
     framework_name = serializers.CharField(source='framework.name', read_only=True)
     framework_code = serializers.CharField(source='framework.code', read_only=True)
+    is_active = serializers.BooleanField(source='is_enabled', read_only=True)
     
     class Meta:
         model = OrganizationFramework
         fields = [
             'id',
             'framework',
+            'framework_id',
             'framework_name',
             'framework_code',
             'is_primary',
+            'is_active',
             'is_enabled',
             'assigned_at'
         ]
         read_only_fields = ['id', 'assigned_at']
+
+
+class FrameworkSelectionItemSerializer(serializers.Serializer):
+    framework_id = serializers.UUIDField()
+    is_active = serializers.BooleanField()
+
+
+class OrganizationFrameworkSelectionSerializer(serializers.Serializer):
+    frameworks = FrameworkSelectionItemSerializer(many=True)
+
+    def validate_frameworks(self, value):
+        if not value:
+            raise serializers.ValidationError('At least one framework update is required')
+
+        framework_ids = [item['framework_id'] for item in value]
+        if len(framework_ids) != len(set(framework_ids)):
+            raise serializers.ValidationError('Duplicate framework_id values are not allowed')
+        return value
+
+
+class FrameworkSelectionOptionSerializer(serializers.Serializer):
+    assignment_id = serializers.UUIDField(source='assignment.id', read_only=True, allow_null=True)
+    framework_id = serializers.UUIDField(source='framework.id', read_only=True)
+    code = serializers.CharField(source='framework.code', read_only=True)
+    name = serializers.CharField(source='framework.name', read_only=True)
+    jurisdiction = serializers.CharField(source='framework.jurisdiction', read_only=True)
+    description = serializers.CharField(source='framework.description', read_only=True)
+    sector = serializers.CharField(source='framework.sector', read_only=True)
+    priority = serializers.IntegerField(source='framework.priority', read_only=True)
+    framework_is_active = serializers.BooleanField(source='framework.is_active', read_only=True)
+    is_system = serializers.BooleanField(source='framework.is_system', read_only=True)
+    is_assigned = serializers.BooleanField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    is_enabled = serializers.BooleanField(read_only=True)
+    is_primary = serializers.BooleanField(read_only=True)
+    assigned_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
 
 class OrganizationSettingsSerializer(serializers.ModelSerializer):
@@ -80,10 +165,14 @@ class OrganizationSettingsSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class OrganizationDetailSerializer(serializers.ModelSerializer):
+class OrganizationDetailSerializer(HierarchyValidationMixin, serializers.ModelSerializer):
     """Serializer for Organization with basic details."""
     
     logo = serializers.SerializerMethodField()
+    entity_type = serializers.ChoiceField(choices=Organization.EntityType.choices, required=False)
+    organization_type = serializers.CharField(source='entity_type', read_only=True)
+    parent = serializers.SerializerMethodField(read_only=True)
+    parent_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = Organization
@@ -96,10 +185,19 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
             'logo',
             'sector',
             'country',
+            'entity_type',
+            'organization_type',
+            'parent',
+            'parent_id',
             'primary_reporting_focus',
             'is_active'
         ]
         read_only_fields = ['id']
+
+    def get_parent(self, obj):
+        if not obj.parent:
+            return None
+        return ParentOrganizationSerializer(obj.parent).data
     
     def get_logo(self, obj):
         """Return logo URL from organization or fallback to profile logo."""
@@ -181,6 +279,13 @@ class OrganizationSettingsDetailSerializer(serializers.Serializer):
     compliance = serializers.SerializerMethodField()
     departments = DepartmentSerializer(many=True, read_only=True)
     frameworks = OrganizationFrameworkSerializer(many=True, read_only=True)
+    esg_settings = serializers.SerializerMethodField()
+
+    def get_esg_settings(self, obj):
+        settings = obj.get('esg_settings')
+        if not settings:
+            return None
+        return OrganizationESGSettingsSerializer(settings).data
     
     def get_preferences(self, obj):
         """Extract user preference settings."""
@@ -280,6 +385,50 @@ class SecuritySettingsUpdateSerializer(serializers.Serializer):
     auto_compliance_enabled = serializers.BooleanField(required=False)
 
 
+class OrganizationESGSettingsSerializer(serializers.ModelSerializer):
+    reporting_frequency = serializers.CharField()
+
+    class Meta:
+        model = OrganizationESGSettings
+        fields = [
+            'enable_environmental',
+            'enable_social',
+            'enable_governance',
+            'reporting_level',
+            'reporting_frequency',
+            'fiscal_year_start_month',
+            'sector_defaults',
+            'updated_at',
+        ]
+        read_only_fields = ['updated_at']
+
+    def validate_reporting_frequency(self, value):
+        normalized = str(value).upper()
+        allowed = set(ReportingPeriod.PeriodType.values)
+        if normalized not in allowed:
+            raise serializers.ValidationError(
+                f"Invalid reporting_frequency '{value}'. Must be one of: {', '.join(sorted(allowed))}"
+            )
+        return normalized
+
+    def validate_fiscal_year_start_month(self, value):
+        if value < 1 or value > 12:
+            raise serializers.ValidationError('fiscal_year_start_month must be between 1 and 12')
+        return value
+
+    def validate(self, data):
+        data = super().validate(data)
+        instance = getattr(self, 'instance', None)
+        environmental = data.get('enable_environmental', getattr(instance, 'enable_environmental', True))
+        social = data.get('enable_social', getattr(instance, 'enable_social', True))
+        governance = data.get('enable_governance', getattr(instance, 'enable_governance', True))
+
+        if not any([environmental, social, governance]):
+            raise serializers.ValidationError('At least one ESG module must be enabled')
+
+        return data
+
+
 # ===================================================================
 # Organization Hierarchy Serializers
 # ===================================================================
@@ -287,10 +436,13 @@ class SecuritySettingsUpdateSerializer(serializers.Serializer):
 class OrganizationHierarchyNodeSerializer(serializers.ModelSerializer):
     """Single node in organization hierarchy tree."""
     
-    organization_type_display = serializers.CharField(
-        source='get_organization_type_display',
+    entity_type = serializers.CharField(read_only=True)
+    entity_type_display = serializers.CharField(
+        source='get_entity_type_display',
         read_only=True
     )
+    organization_type = serializers.CharField(source='entity_type', read_only=True)
+    organization_type_display = serializers.CharField(source='get_entity_type_display', read_only=True)
     parent_id = serializers.UUIDField(source='parent.id', read_only=True, allow_null=True)
     parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
     
@@ -299,6 +451,8 @@ class OrganizationHierarchyNodeSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'name',
+            'entity_type',
+            'entity_type_display',
             'organization_type',
             'organization_type_display',
             'parent_id',
@@ -318,26 +472,34 @@ class OrganizationTreeSerializer(serializers.Serializer):
     
     id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(read_only=True)
+    entity_type = serializers.CharField(read_only=True)
+    entity_type_display = serializers.CharField(read_only=True)
     organization_type = serializers.CharField(read_only=True)
     organization_type_display = serializers.CharField(read_only=True)
     sector = serializers.CharField(read_only=True)
     country = serializers.CharField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
+    parent = ParentOrganizationSerializer(read_only=True, allow_null=True)
     subsidiaries = serializers.SerializerMethodField(read_only=True)
+    children = serializers.SerializerMethodField(read_only=True)
     
-    def get_subsidiaries(self, obj):
+    def _get_child_nodes(self, obj):
         """Recursively serialize child organizations."""
-        if not isinstance(obj, dict):
-            # obj is from selector function (dict-based tree)
-            children = obj.get('subsidiaries', [])
+        if isinstance(obj, dict):
+            child_nodes = obj.get('children') or obj.get('subsidiaries', [])
         else:
-            # obj is Organization instance
-            children = obj.get('subsidiaries', [])
-        
-        return [self.to_representation(child) for child in children]
+            child_nodes = []
+
+        return [self.to_representation(child) for child in child_nodes]
+
+    def get_subsidiaries(self, obj):
+        return self._get_child_nodes(obj)
+
+    def get_children(self, obj):
+        return self._get_child_nodes(obj)
 
 
-class CreateSubsidiarySerializer(serializers.Serializer):
+class CreateSubsidiarySerializer(HierarchyValidationMixin, serializers.Serializer):
     """Serializer for creating subsidiary organizations."""
     
     name = serializers.CharField(
@@ -358,11 +520,17 @@ class CreateSubsidiarySerializer(serializers.Serializer):
         required=True,
         help_text="ISO 3166-1 alpha-2 country code"
     )
-    organization_type = serializers.ChoiceField(
-        choices=Organization.OrganizationType.choices,
-        default=Organization.OrganizationType.SUBSIDIARY,
+    entity_type = serializers.ChoiceField(
+        choices=Organization.EntityType.choices,
+        default=Organization.EntityType.SUBSIDIARY,
         required=False
     )
+    organization_type = serializers.ChoiceField(
+        choices=Organization.EntityType.choices,
+        write_only=True,
+        required=False
+    )
+    parent_id = serializers.UUIDField(required=False, allow_null=True)
     company_size = serializers.ChoiceField(
         choices=[
             ("small", "Small (1-50 employees)"),
@@ -391,6 +559,8 @@ class OrganizationStatisticsSerializer(serializers.Serializer):
     total_descendants = serializers.IntegerField(read_only=True)
     direct_children = serializers.IntegerField(read_only=True)
     depth = serializers.IntegerField(read_only=True)
+    hierarchy_depth = serializers.IntegerField(read_only=True)
+    entity_type = serializers.CharField(read_only=True)
     organization_type = serializers.CharField(read_only=True)
     type_breakdown = serializers.DictField(read_only=True)
 

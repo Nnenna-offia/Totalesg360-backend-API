@@ -8,7 +8,8 @@ from roles.models.capability import Capability
 from roles.models.role import Role
 from roles.models.role_capability import RoleCapability
 from organizations.models.membership import Membership
-from indicators.models import Indicator, OrganizationIndicator
+from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from organizations.models import RegulatoryFramework, OrganizationFramework
 from submissions.models import ReportingPeriod, DataSubmission
 
 
@@ -33,6 +34,9 @@ class ApprovalFlowTests(TestCase):
 
         # indicator and period
         self.ind = Indicator.objects.create(code="A1", name="A1", pillar="ENV", data_type=Indicator.DataType.NUMBER)
+        self.framework = RegulatoryFramework.objects.create(code="APP-FW", name="Approval Framework", jurisdiction="INTERNATIONAL")
+        OrganizationFramework.objects.create(organization=self.org, framework=self.framework, is_enabled=True)
+        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind, is_required=True, display_order=1)
         OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind, is_active=True)
         self.period = ReportingPeriod.objects.create(organization=self.org, year=2025)
 
@@ -41,7 +45,7 @@ class ApprovalFlowTests(TestCase):
         self.client.force_authenticate(self.submit_user)
         self.client.credentials(HTTP_X_ORG_ID=str(self.org.id))
         submit_url = reverse('submit-indicator')
-        payload = {"indicator_id": str(self.ind.id), "reporting_period_id": str(self.period.id), "value": 7}
+        payload = {"indicator_id": str(self.ind.id), "value": 7}
         resp = self.client.post(submit_url, payload, format='json')
         assert resp.status_code in (200, 201)
         sub_id = resp.data['data']['id']

@@ -8,7 +8,6 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 class SubmissionCreateSerializer(serializers.Serializer):
 	indicator_id = serializers.UUIDField()
-	reporting_period_id = serializers.UUIDField()
 	facility_id = serializers.UUIDField(required=False, allow_null=True)
 	value = serializers.JSONField(required=False)
 	metadata = serializers.JSONField(required=False)

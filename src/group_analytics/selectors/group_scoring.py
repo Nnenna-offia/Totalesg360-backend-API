@@ -158,8 +158,9 @@ def get_subsidiary_ranking(
         ]
     """
     subsidiaries = Organization.objects.filter(
-        parent=parent_organization
-    ).values_list('id', 'name', 'organization_type')
+        parent=parent_organization,
+        entity_type=Organization.EntityType.SUBSIDIARY,
+    ).values_list('id', 'name', 'entity_type')
     subsidiary_ids = [s[0] for s in subsidiaries]
     
     if not subsidiary_ids:

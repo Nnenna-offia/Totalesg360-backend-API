@@ -2,7 +2,7 @@ from django.test import TestCase
 
 from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
 from organizations.models import RegulatoryFramework, Organization, OrganizationFramework
-from indicators.selectors.queries import get_framework_indicators, get_org_effective_indicators
+from indicators.selectors.queries import get_active_indicators, get_framework_indicators, get_org_effective_indicators
 
 
 class IndicatorSelectorsTest(TestCase):
@@ -10,6 +10,7 @@ class IndicatorSelectorsTest(TestCase):
         # Indicators
         self.ind_a = Indicator.objects.create(code="IND_A", name="Indicator A", pillar="ENV", data_type="number")
         self.ind_b = Indicator.objects.create(code="IND_B", name="Indicator B", pillar="SOC", data_type="percent")
+        self.ind_c = Indicator.objects.create(code="IND_C", name="Indicator C", pillar="GOV", data_type="number")
 
         # Frameworks
         self.fw1 = RegulatoryFramework.objects.create(code="FW1", name="Framework 1", jurisdiction="INTERNATIONAL")
@@ -19,6 +20,7 @@ class IndicatorSelectorsTest(TestCase):
         FrameworkIndicator.objects.create(framework=self.fw1, indicator=self.ind_a, is_required=True, display_order=1)
         FrameworkIndicator.objects.create(framework=self.fw1, indicator=self.ind_b, is_required=False, display_order=2)
         FrameworkIndicator.objects.create(framework=self.fw2, indicator=self.ind_b, is_required=True, display_order=1)
+        FrameworkIndicator.objects.create(framework=self.fw2, indicator=self.ind_c, is_required=True, display_order=2)
 
         # Organization
         self.org = Organization.objects.create(name="Org X", sector="manufacturing", country="NG")
@@ -64,3 +66,23 @@ class IndicatorSelectorsTest(TestCase):
         self.assertTrue(data["IND_B"].overridden)
         self.assertTrue(data["IND_B"].is_required_effective)  # override True
         self.assertFalse(data["IND_B"].is_active_effective)  # override False
+
+    def test_get_active_indicators_requires_active_framework_and_enabled_pillar(self):
+        active_codes = list(get_active_indicators(self.org).order_by('code').values_list('code', flat=True))
+        self.assertEqual(active_codes, ["IND_A", "IND_B"])
+
+        settings = self.org.esg_settings
+        settings.enable_social = False
+        settings.save(update_fields=['enable_social'])
+
+        filtered_codes = list(get_active_indicators(self.org).order_by('code').values_list('code', flat=True))
+        self.assertEqual(filtered_codes, ["IND_A"])
+
+        org_framework = OrganizationFramework.objects.get(organization=self.org, framework=self.fw2)
+        org_framework.is_enabled = True
+        org_framework.save(update_fields=['is_enabled'])
+        settings.enable_social = True
+        settings.save(update_fields=['enable_social'])
+
+        all_codes = list(get_active_indicators(self.org).order_by('code').values_list('code', flat=True))
+        self.assertEqual(all_codes, ["IND_A", "IND_B", "IND_C"])

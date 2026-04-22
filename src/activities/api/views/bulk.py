@@ -19,7 +19,7 @@ class ActivitySubmissionBulkCreateAPIView(APIView):
 		"""
 		Create multiple activity submissions.
 		Payload: { "submissions": [...] }
-		Each submission should have: activity_type_id, reporting_period_id, facility_id (optional), value
+		Each submission should have: activity_type_id, facility_id (optional), value
 		"""
 		org, membership = get_org_and_membership(request=request)
 		
@@ -60,7 +60,6 @@ class ActivitySubmissionBulkCreateAPIView(APIView):
 						org=org,
 						user=request.user,
 						activity_type_id=str(data['activity_type_id']),
-						reporting_period_id=str(data['reporting_period_id']),
 						facility_id=str(data.get('facility_id')) if data.get('facility_id') else None,
 						value=data['value'],
 					)

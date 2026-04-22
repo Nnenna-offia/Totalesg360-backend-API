@@ -23,7 +23,6 @@ class ActivitySubmissionCreateAPIView(APIView):
 				org=org,
 				user=request.user,
 				activity_type_id=str(data['activity_type_id']),
-				reporting_period_id=str(data['reporting_period_id']),
 				facility_id=str(data.get('facility_id')) if data.get('facility_id') else None,
 				value=data['value'],
 			)

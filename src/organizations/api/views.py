@@ -14,20 +14,26 @@ from organizations.selectors.metadata import (
 )
 from organizations.selectors.settings import get_organization_settings, get_organization_with_settings
 from organizations.selectors.department import get_organization_departments, get_department_by_id
+from organizations.selectors.frameworks import get_framework_selection_options
 from organizations.services.settings import update_general_settings, update_security_settings
+from organizations.services.esg_settings import get_or_create_esg_settings
+from organizations.services.framework_selection import update_organization_frameworks
 from organizations.services.profile import (
     update_organization_profile,
     create_business_unit,
     update_business_unit,
     delete_business_unit,
 )
-from organizations.models import Department
+from organizations.models import Department, Organization, OrganizationESGSettings
 
 from .serializers import (
     OrganizationSettingsDetailSerializer,
     GeneralSettingsUpdateSerializer,
     SecuritySettingsUpdateSerializer,
-    OrganizationSettingsSerializer
+    OrganizationSettingsSerializer,
+    OrganizationESGSettingsSerializer,
+    OrganizationFrameworkSelectionSerializer,
+    FrameworkSelectionOptionSerializer,
 )
 from .serializers import OrganizationProfileSerializer, BusinessUnitSerializer
 from organizations.models import BusinessUnit, OrganizationProfile
@@ -368,6 +374,152 @@ class OrganizationProfileView(APIView):
         profile, _ = OrganizationProfile.objects.get_or_create(organization=org)
         out = OrganizationProfileSerializer(profile)
         return success_response(data=out.data, status=status.HTTP_200_OK)
+
+
+class OrganizationESGSettingsView(APIView):
+    permission_classes = [IsAuthenticated, IsOrgMember, HasCapability]
+    required_capability = "org.manage"
+
+    def initial(self, request, *args, **kwargs):
+        organization_id = kwargs.get('organization_id')
+        if organization_id and not getattr(request, 'organization', None):
+            organization = Organization.objects.filter(id=organization_id, is_active=True).first()
+            if organization:
+                request.organization = organization
+        return super().initial(request, *args, **kwargs)
+
+    def _get_organization(self, request, organization_id=None):
+        path_org = None
+        if organization_id:
+            path_org = Organization.objects.filter(id=organization_id, is_active=True).first()
+            if path_org:
+                request.organization = path_org
+
+        header_org = _get_org(request)
+        if path_org and header_org and path_org.id != header_org.id:
+            return None
+        return path_org or header_org
+
+    def get(self, request, organization_id=None):
+        organization = self._get_organization(request, organization_id)
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or organization context mismatch",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = OrganizationESGSettingsSerializer(get_or_create_esg_settings(organization))
+        return success_response(data=serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, organization_id=None):
+        organization = self._get_organization(request, organization_id)
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or organization context mismatch",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        esg_settings = get_or_create_esg_settings(organization)
+        serializer = OrganizationESGSettingsSerializer(esg_settings, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": "Invalid ESG settings provided",
+                    "errors": serializer.errors,
+                    "code": "validation_error",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        updated_settings = serializer.save()
+        return success_response(
+            data=OrganizationESGSettingsSerializer(updated_settings).data,
+            meta={"message": "ESG settings updated successfully"},
+            status=status.HTTP_200_OK,
+        )
+
+
+class OrganizationFrameworkSelectionView(APIView):
+    permission_classes = [IsAuthenticated, IsOrgMember, HasCapability]
+    required_capability = "org.manage"
+
+    def get(self, request):
+        organization = _get_org(request)
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = FrameworkSelectionOptionSerializer(get_framework_selection_options(organization), many=True)
+        return success_response(data={"frameworks": serializer.data}, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        organization = _get_org(request)
+        if not organization:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/not-found",
+                    "title": "Organization not found",
+                    "detail": "Organization not found or X-ORG-ID header missing",
+                    "code": "org_not_found",
+                },
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = OrganizationFrameworkSelectionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": "Invalid framework selection payload",
+                    "errors": serializer.errors,
+                    "code": "validation_error",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            options = update_organization_frameworks(
+                organization=organization,
+                updates=serializer.validated_data['frameworks'],
+                assigned_by=request.user,
+            )
+        except DjangoValidationError as exc:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": str(exc),
+                    "code": "validation_error",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response_serializer = FrameworkSelectionOptionSerializer(options, many=True)
+        return success_response(
+            data={"frameworks": response_serializer.data},
+            meta={"message": "Framework selection updated successfully"},
+            status=status.HTTP_200_OK,
+        )
 
 
 class BusinessUnitListCreateView(APIView):
@@ -729,9 +881,10 @@ class SubsidiariesListCreateView(APIView):
         
         try:
             from organizations.api.serializers import OrganizationDetailSerializer
+            from organizations.selectors.organization_hierarchy import get_subsidiaries
             
             # Get direct children only via reverse relationship
-            subsidiaries = org.subsidiaries.filter(is_active=True)
+            subsidiaries = get_subsidiaries(org)
             serializer = OrganizationDetailSerializer(subsidiaries, many=True)
             return success_response(data=serializer.data)
         except Exception as e:
@@ -773,20 +926,35 @@ class SubsidiariesListCreateView(APIView):
         
         try:
             from organizations.services.organization_hierarchy import create_subsidiary
+            from organizations.selectors.organization_hierarchy import is_descendant_of
+
+            parent = serializer.validated_data.get('parent') or org
+            if parent != org and not is_descendant_of(parent, org):
+                return problem_response(
+                    {
+                        "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                        "title": "Validation Error",
+                        "detail": "Parent organization must belong to your hierarchy",
+                    },
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
             
             subsidiary = create_subsidiary(
-                parent_organization=org,
+                parent_organization=parent,
                 name=serializer.validated_data['name'],
                 sector=serializer.validated_data.get('sector'),
                 country=serializer.validated_data.get('country'),
-                organization_type=serializer.validated_data.get('organization_type', 'subsidiary')
+                entity_type=serializer.validated_data.get('entity_type', 'subsidiary'),
+                company_size=serializer.validated_data.get('company_size'),
+                registered_name=serializer.validated_data.get('registered_name'),
+                primary_reporting_focus=serializer.validated_data.get('primary_reporting_focus'),
             )
             
             return success_response(
                 data=OrganizationDetailSerializer(subsidiary).data,
                 status=status.HTTP_201_CREATED
             )
-        except ValueError as e:
+        except (ValueError, DjangoValidationError) as e:
             return problem_response(
                 {
                     "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
@@ -904,8 +1072,30 @@ class SubsidiaryDetailView(APIView):
             )
         
         try:
+            from organizations.selectors.organization_hierarchy import is_descendant_of
+
+            new_parent = serializer.validated_data.get('parent')
+            if new_parent and new_parent != org and not is_descendant_of(new_parent, org):
+                return problem_response(
+                    {
+                        "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                        "title": "Validation Error",
+                        "detail": "Parent organization must belong to your hierarchy",
+                    },
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
             updated_subsidiary = serializer.save()
             return success_response(data=OrganizationDetailSerializer(updated_subsidiary).data)
+        except DjangoValidationError as e:
+            return problem_response(
+                {
+                    "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
+                    "title": "Validation Error",
+                    "detail": e.message if hasattr(e, 'message') else str(e),
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as e:
             logger.error(f"Error updating subsidiary: {str(e)}")
             return problem_response(

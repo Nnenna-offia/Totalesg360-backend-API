@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError
 
 from common.logging import get_service_logger
 from organizations.models import Organization, OrganizationSettings
+from organizations.services.create_organization import create_organization
+from organizations.services.hierarchy_validation import validate_hierarchy
 from organizations.selectors.organization_hierarchy import (
     get_organization_descendants,
     is_descendant_of,
@@ -19,7 +21,8 @@ def create_subsidiary(
     name: str,
     sector: str,
     country: str,
-    organization_type: str = "subsidiary",
+    entity_type: str = "subsidiary",
+    organization_type: str = None,
     company_size: str = None,
     registered_name: str = None,
     primary_reporting_focus: str = None,
@@ -37,7 +40,7 @@ def create_subsidiary(
         name: Organization name
         sector: Sector code
         country: ISO 3166-1 alpha-2 country code
-        organization_type: 'subsidiary' | 'facility' | 'department'
+        entity_type: 'subsidiary' | 'facility' | 'department'
         company_size: Optional size category
         registered_name: Optional official name
         primary_reporting_focus: Inherited from parent if not specified
@@ -54,7 +57,7 @@ def create_subsidiary(
             name="WACOT Rice Limited",
             sector="manufacturing",
             country="NG",
-            organization_type="subsidiary"
+            entity_type="subsidiary"
         )
     """
     # Validate parent organization
@@ -64,14 +67,17 @@ def create_subsidiary(
     # Use parent's reporting focus if not specified
     if not primary_reporting_focus:
         primary_reporting_focus = parent_organization.primary_reporting_focus
+
+    resolved_entity_type = entity_type or organization_type or Organization.EntityType.SUBSIDIARY
+    validate_hierarchy(parent_organization, resolved_entity_type)
     
     # Create subsidiary
-    child_org = Organization.objects.create(
+    child_org = create_organization(
         parent=parent_organization,
         name=name,
         sector=sector,
         country=country,
-        organization_type=organization_type,
+        entity_type=resolved_entity_type,
         company_size=company_size or parent_organization.company_size,
         registered_name=registered_name or name,
         primary_reporting_focus=primary_reporting_focus,
@@ -79,7 +85,7 @@ def create_subsidiary(
     )
     
     logger.info(
-        f"Created {organization_type} '{name}' under parent '{parent_organization.name}'",
+        f"Created {resolved_entity_type} '{name}' under parent '{parent_organization.name}'",
         extra={"org_id": child_org.id, "parent_id": parent_organization.id}
     )
     
@@ -145,8 +151,9 @@ def convert_to_group(organization: Organization) -> Organization:
     
     This allows an organization that was standalone to become a parent.
     """
-    organization.organization_type = Organization.OrganizationType.GROUP
-    organization.save(update_fields=["organization_type"])
+    organization.entity_type = Organization.EntityType.GROUP
+    organization.parent = None
+    organization.save(update_fields=["entity_type", "parent"])
     
     logger.info(
         f"Converted '{organization.name}' to group type",
@@ -181,6 +188,8 @@ def move_subsidiary(
         raise ValidationError(
             "Cannot move organization: would create circular hierarchy"
         )
+
+    validate_hierarchy(new_parent, child_organization.entity_type, instance=child_organization)
     
     old_parent = child_organization.parent
     child_organization.parent = new_parent
@@ -276,7 +285,7 @@ def validate_hierarchy_structure(organization: Organization) -> Dict[str, Any]:
         errors.append(f"Error checking hierarchy: {str(e)}")
     
     # Check organization type consistency
-    if organization.organization_type == Organization.OrganizationType.GROUP:
+    if organization.entity_type == Organization.EntityType.GROUP:
         if organization.parent:
             warnings.append("Group should not have a parent organization")
     
