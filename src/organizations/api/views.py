@@ -339,7 +339,7 @@ class OrganizationProfileView(APIView):
                 "code": "org_not_found",
             }, status_code=status.HTTP_404_NOT_FOUND)
 
-        serializer = OrganizationProfileSerializer(data=request.data)
+        serializer = OrganizationProfileSerializer(data=request.data, partial=True, context={"request": request})
         if not serializer.is_valid():
             return problem_response({
                 "type": f"{settings.PROBLEM_BASE_URL}/validation-error",
@@ -351,7 +351,7 @@ class OrganizationProfileView(APIView):
 
         try:
             profile = update_organization_profile(org, **serializer.validated_data)
-            out = OrganizationProfileSerializer(profile)
+            out = OrganizationProfileSerializer(profile, context={"request": request})
             return success_response(data=out.data, meta={"message": "Profile updated"}, status=status.HTTP_200_OK)
         except Exception as e:
             return problem_response({
@@ -372,7 +372,7 @@ class OrganizationProfileView(APIView):
             }, status_code=status.HTTP_404_NOT_FOUND)
 
         profile, _ = OrganizationProfile.objects.get_or_create(organization=org)
-        out = OrganizationProfileSerializer(profile)
+        out = OrganizationProfileSerializer(profile, context={"request": request})
         return success_response(data=out.data, status=status.HTTP_200_OK)
 
 

@@ -1,4 +1,5 @@
 """Serializers for organization settings API."""
+import json
 from rest_framework import serializers
 from submissions.models.reporting_period import ReportingPeriod
 from organizations.models import (
@@ -219,8 +220,8 @@ class OrganizationDetailSerializer(HierarchyValidationMixin, serializers.ModelSe
 
 class OrganizationProfileSerializer(serializers.ModelSerializer):
     """Serializer for OrganizationProfile with logo URL fallback."""
-    
-    logo = serializers.SerializerMethodField()
+
+    logo = serializers.ImageField(required=False, allow_null=True)
     
     class Meta:
         model = OrganizationProfile
@@ -234,13 +235,36 @@ class OrganizationProfileSerializer(serializers.ModelSerializer):
             'fiscal_year_end_month',
             'cac_document',
         ]
-    
-    def get_logo(self, obj):
-        """Return logo URL as absolute path."""
-        if obj.logo:
+
+    def validate_operational_locations(self, value):
+        # multipart/form-data can send this field as a JSON string.
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError("Value must be valid JSON.")
+
+            if not isinstance(parsed, list):
+                raise serializers.ValidationError("Value must be a JSON array.")
+
+            return parsed
+
+        return value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        if instance.logo:
             request = self.context.get('request')
-            return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
-        return None
+            data['logo'] = request.build_absolute_uri(instance.logo.url) if request else instance.logo.url
+        else:
+            data['logo'] = None
+
+        if instance.cac_document:
+            request = self.context.get('request')
+            data['cac_document'] = request.build_absolute_uri(instance.cac_document.url) if request else instance.cac_document.url
+
+        return data
 
 
 class BusinessUnitSerializer(serializers.ModelSerializer):
