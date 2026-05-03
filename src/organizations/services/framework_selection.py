@@ -3,6 +3,7 @@ from django.db import transaction
 
 from organizations.models import OrganizationFramework, RegulatoryFramework
 from organizations.selectors.frameworks import get_framework_selection_options
+from indicators.services import schedule_sync_for_org
 
 
 def _normalize_primary_framework(organization):
@@ -76,4 +77,6 @@ def update_organization_frameworks(*, organization, updates, assigned_by=None):
         )
 
     _normalize_primary_framework(organization)
+    # Explicitly sync activated indicators for selected frameworks.
+    schedule_sync_for_org(organization)
     return get_framework_selection_options(organization)

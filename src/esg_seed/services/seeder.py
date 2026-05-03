@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 
 from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
-from indicators.models import FrameworkIndicator, Indicator
+from indicators.models import Indicator
 from organizations.models import RegulatoryFramework
 
 
@@ -125,17 +125,8 @@ def seed_mapping(framework, requirements, indicators, mapping):
             defaults={
                 "mapping_type": IndicatorFrameworkMapping.MappingType.PRIMARY,
                 "is_primary": True,
-                "coverage_percent": 100,
+                "coverage_percent": 0,
                 "is_active": True,
-            },
-        )
-
-        FrameworkIndicator.objects.update_or_create(
-            framework=framework,
-            indicator=indicator,
-            defaults={
-                "is_required": requirement.is_mandatory,
-                "display_order": order,
             },
         )
 

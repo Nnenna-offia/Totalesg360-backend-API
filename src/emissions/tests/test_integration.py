@@ -24,12 +24,35 @@ class EmissionsIntegrationTests(TestCase):
         Membership.objects.create(user=self.user, organization=self.org, role=role)
         self.period = ReportingPeriod.objects.create(organization=self.org, year=2024)
 
-        # create scope and activity type
+        # create indicators, scope and activity type
+        self.input_indicator = Indicator.objects.create(
+            code='S1-DIESEL-L-TEST',
+            name='Diesel consumption test',
+            pillar='ENV',
+            data_type='number',
+            collection_method=Indicator.CollectionMethod.ACTIVITY,
+            indicator_type=Indicator.IndicatorType.INPUT,
+        )
         self.scope1 = Scope.objects.create(name='Scope 1', code='scope1')
-        self.activity = ActivityType.objects.create(name='Diesel Combustion', unit='liters', scope=self.scope1)
+        self.activity = ActivityType.objects.create(
+            name='Diesel Combustion',
+            unit='liters',
+            scope=self.scope1,
+            indicator=self.input_indicator,
+        )
 
         # create emission factor
-        EmissionFactor.objects.create(activity_type=self.activity, country=None, year=2024, factor=2.68, unit='kgCO2e/liter')
+        EmissionFactor.objects.create(
+            activity_type=self.activity,
+            indicator=self.input_indicator,
+            country=None,
+            year=2024,
+            factor=2.68,
+            factor_value=2.68,
+            unit='kgCO2e/liter',
+            unit_input='liters',
+            unit_output='kgCO2e',
+        )
 
         # create indicators for persistence
         Indicator.objects.create(code='total_scope1_emissions', name='Total Scope 1 Emissions', pillar='ENV', data_type='number')

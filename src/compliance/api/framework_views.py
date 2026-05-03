@@ -2,11 +2,11 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 
-from common.permissions import IsOrgMember, HasCapability
+from common.permissions import IsOrgMember, HasGlobalCapability
 from organizations.models import RegulatoryFramework, OrganizationFramework
 from indicators.models import Indicator
 from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
@@ -37,7 +37,7 @@ class FrameworkRequirementViewSet(viewsets.ModelViewSet):
     """ViewSet for framework requirements."""
     
     queryset = FrameworkRequirement.objects.filter(status=FrameworkRequirement.Status.ACTIVE)
-    permission_classes = [IsAuthenticated]
+    required_capability = 'framework.manage'
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['framework', 'pillar', 'is_mandatory']
     search_fields = ['code', 'title', 'description']
@@ -48,6 +48,11 @@ class FrameworkRequirementViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             return FrameworkRequirementDetailSerializer
         return FrameworkRequirementSerializer
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [AllowAny()]
+        return [IsAuthenticated(), HasGlobalCapability()]
     
     @action(detail=False, methods=['get'])
     def by_framework(self, request):
@@ -94,7 +99,7 @@ class IndicatorFrameworkMappingViewSet(viewsets.ModelViewSet):
     """ViewSet for Indicator-Framework mappings."""
     
     queryset = IndicatorFrameworkMapping.objects.filter(is_active=True)
-    permission_classes = [IsAuthenticated]
+    required_capability = 'framework.manage'
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['indicator', 'framework', 'is_primary', 'mapping_type']
     ordering_fields = ['-is_primary', '-coverage_percent', 'framework__code']
@@ -106,6 +111,11 @@ class IndicatorFrameworkMappingViewSet(viewsets.ModelViewSet):
         elif self.action == 'retrieve':
             return IndicatorFrameworkMappingDetailSerializer
         return IndicatorFrameworkMappingSerializer
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [AllowAny()]
+        return [IsAuthenticated(), HasGlobalCapability()]
     
     @action(detail=False, methods=['get'])
     def for_indicator(self, request):
@@ -140,7 +150,7 @@ class IndicatorFrameworkMappingViewSet(viewsets.ModelViewSet):
                 'mapping_type': item['mapping_type'],
                 'coverage_status': item['coverage_status'],
                 'is_primary': item['mapping'].is_primary,
-                'coverage_percent': item['mapping'].coverage_percent,
+                'coverage_percent': item['mapping'].get_dynamic_coverage_percent(),
             })
         
         return Response({
@@ -181,7 +191,7 @@ class IndicatorFrameworkMappingViewSet(viewsets.ModelViewSet):
                     'pillar': indicator.pillar.pillar if indicator.pillar else None,
                 },
                 'mappings': IndicatorFrameworkMappingSerializer(
-                    indicator.framework_mappings.all(),
+                    indicator.regulatory_requirement_mappings.filter(framework=framework, is_active=True),
                     many=True
                 ).data,
             })
@@ -292,14 +302,19 @@ class OrganizationFrameworkViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(result)
 
 
-class FrameworkListViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for listing available frameworks (no org filtering)."""
+class FrameworkListViewSet(viewsets.ModelViewSet):
+    """ViewSet for global framework listing and editing."""
     
-    queryset = RegulatoryFramework.objects.filter(is_active=True)
+    queryset = RegulatoryFramework.objects.all().order_by('-priority', 'name')
     serializer_class = RegulatoryFrameworkSerializer
-    permission_classes = [IsAuthenticated]
+    required_capability = 'framework.manage'
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['jurisdiction', 'sector']
+    filterset_fields = ['jurisdiction', 'sector', 'is_active', 'is_system']
     search_fields = ['code', 'name', 'description']
     ordering_fields = ['priority', 'name']
     ordering = ['-priority', 'name']
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [AllowAny()]
+        return [IsAuthenticated(), HasGlobalCapability()]

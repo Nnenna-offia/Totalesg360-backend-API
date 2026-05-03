@@ -22,9 +22,32 @@ class EmissionsTasksAPITests(TestCase):
         role = Role.objects.create(code='org_admin2', name='Org Admin')
         Membership.objects.create(user=self.user, organization=self.org, role=role)
         self.period = ReportingPeriod.objects.create(organization=self.org, year=2024)
+        self.input_indicator = Indicator.objects.create(
+            code='S1-DIESEL-L-TASK',
+            name='Diesel consumption task',
+            pillar='ENV',
+            data_type='number',
+            collection_method=Indicator.CollectionMethod.ACTIVITY,
+            indicator_type=Indicator.IndicatorType.INPUT,
+        )
         self.scope1 = Scope.objects.create(name='Scope 1', code='scope1')
-        self.activity = ActivityType.objects.create(name='Diesel Combustion', unit='liters', scope=self.scope1)
-        EmissionFactor.objects.create(activity_type=self.activity, country=None, year=2024, factor=2.5, unit='kgCO2e/liter')
+        self.activity = ActivityType.objects.create(
+            name='Diesel Combustion',
+            unit='liters',
+            scope=self.scope1,
+            indicator=self.input_indicator,
+        )
+        EmissionFactor.objects.create(
+            activity_type=self.activity,
+            indicator=self.input_indicator,
+            country=None,
+            year=2024,
+            factor=2.5,
+            factor_value=2.5,
+            unit='kgCO2e/liter',
+            unit_input='liters',
+            unit_output='kgCO2e',
+        )
         Indicator.objects.create(code='total_scope1_emissions', name='Total Scope 1', pillar='ENV', data_type='number')
 
     def test_task_persist_and_api_endpoint(self):

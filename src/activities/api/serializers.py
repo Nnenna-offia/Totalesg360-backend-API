@@ -19,7 +19,7 @@ class ActivityTypeListSerializer(serializers.ModelSerializer):
 	
 	class Meta:
 		model = ActivityType
-		fields = ['id', 'name', 'unit', 'scope', 'indicator', 'display_order', 'data_type', 'requires_evidence', 'is_required', 'is_active', 'created_at', 'updated_at']
+		fields = ['id', 'name', 'unit', 'scope', 'indicator', 'display_order', 'data_type', 'collection_frequency', 'requires_evidence', 'is_required', 'is_active', 'created_at', 'updated_at']
 		read_only_fields = ['id', 'created_at', 'updated_at']
 	
 	def get_indicator(self, obj):
@@ -43,7 +43,7 @@ class ActivityTypeDetailSerializer(serializers.ModelSerializer):
 		model = ActivityType
 		fields = [
 			'id', 'name', 'description', 'unit', 'scope', 'indicator',
-			'display_order', 'data_type', 'requires_evidence', 'is_required',
+			'display_order', 'data_type', 'collection_frequency', 'requires_evidence', 'is_required',
 			'is_active', 'submission_count', 'created_at', 'updated_at'
 		]
 		read_only_fields = ['id', 'created_at', 'updated_at']
@@ -70,7 +70,7 @@ class ActivityTypeCreateUpdateSerializer(serializers.ModelSerializer):
 	class Meta:
 		model = ActivityType
 		# `unit` is derived from the linked indicator and is not writable.
-		fields = ['name', 'description', 'scope', 'indicator', 'display_order', 'data_type', 'requires_evidence', 'is_required', 'is_active']
+		fields = ['name', 'description', 'scope', 'indicator', 'display_order', 'data_type', 'collection_frequency', 'requires_evidence', 'is_required', 'is_active']
 	
 	def validate(self, attrs):
 		# Ensure indicator is set to activity-based if linked

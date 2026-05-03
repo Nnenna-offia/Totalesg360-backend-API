@@ -1,14 +1,24 @@
 from typing import List
 from django.db.models import OuterRef, Subquery, Exists, Case, When, Value, BooleanField, F
 
-from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from indicators.models import Indicator, OrganizationIndicator
+from compliance.models import IndicatorFrameworkMapping
 from organizations.models import OrganizationFramework
 from organizations.selectors.frameworks import get_active_frameworks
 
 
-def get_framework_indicators(framework) -> List[FrameworkIndicator]:
-    """Return FrameworkIndicator rows for a framework ordered by display_order."""
-    return FrameworkIndicator.objects.filter(framework=framework).select_related('indicator').order_by('display_order')
+def get_framework_indicators(framework):
+    """Return indicators for a framework with mapping metadata, ordered by requirement priority.
+    
+    Derives display_order from requirement sequence and mapping type.
+    Returns: QuerySet of IndicatorFrameworkMapping objects with indicator and requirement.
+    """
+    return (
+        IndicatorFrameworkMapping.objects
+        .filter(requirement__framework=framework, is_active=True)
+        .select_related('indicator', 'requirement')
+        .order_by('requirement__priority', 'requirement__code')
+    )
 
 
 def get_org_effective_indicators(org):
@@ -28,15 +38,21 @@ def get_org_effective_indicators(org):
     override_active = Subquery(org_override_qs.values('is_active')[:1])
     override_exists = Exists(org_override_qs)
 
-    # Exists: any enabled framework marks this indicator required
+    # Exists: any enabled framework has a mandatory requirement for this indicator
     required_by_framework = Exists(
-        FrameworkIndicator.objects.filter(framework__in=enabled_fws, indicator=OuterRef('pk'), is_required=True)
+        IndicatorFrameworkMapping.objects.filter(
+            requirement__framework__in=enabled_fws,
+            indicator=OuterRef('pk'),
+            requirement__is_mandatory=True,
+            is_active=True
+        )
     )
 
     qs = (
         Indicator.objects.filter(
             is_active=True,
-            framework_mappings__framework__in=enabled_fws,
+            regulatory_requirement_mappings__requirement__framework__in=enabled_fws,
+            regulatory_requirement_mappings__is_active=True,
         )
         .distinct()
         .annotate(

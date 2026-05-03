@@ -378,7 +378,7 @@ class OrganizationProfileView(APIView):
 
 class OrganizationESGSettingsView(APIView):
     permission_classes = [IsAuthenticated, IsOrgMember, HasCapability]
-    required_capability = "org.manage"
+    # required_capability = "org.manage"
 
     def initial(self, request, *args, **kwargs):
         organization_id = kwargs.get('organization_id')

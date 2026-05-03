@@ -7,7 +7,8 @@ from roles.models.capability import Capability
 from roles.models.role import Role
 from roles.models.role_capability import RoleCapability
 from organizations.models.membership import Membership
-from indicators.models import FrameworkIndicator, Indicator, OrganizationIndicator
+from indicators.models import Indicator, OrganizationIndicator
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
 from organizations.models import OrganizationFramework, RegulatoryFramework
 from submissions.models import ReportingPeriod, DataSubmission
 from submissions.services import submit_indicator_value
@@ -24,12 +25,36 @@ class EdgeCaseTests(TestCase):
 
         self.ind_num = Indicator.objects.create(code="E1", name="Num", pillar="ENV", data_type=Indicator.DataType.NUMBER)
         self.ind_bool = Indicator.objects.create(code="E2", name="Bool", pillar="ENV", data_type=Indicator.DataType.BOOLEAN)
+        self.ind_derived = Indicator.objects.create(
+            code="E3",
+            name="Derived",
+            pillar="ENV",
+            data_type=Indicator.DataType.NUMBER,
+            collection_method=Indicator.CollectionMethod.DIRECT,
+            indicator_type=Indicator.IndicatorType.DERIVED,
+        )
         self.framework = RegulatoryFramework.objects.create(code="EDGE-FW", name="Edge Framework", jurisdiction="INTERNATIONAL")
         OrganizationFramework.objects.create(organization=self.org, framework=self.framework, is_enabled=True)
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind_num, is_required=True, display_order=1)
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind_bool, is_required=True, display_order=2)
+        
+        # Create requirements and map indicators to them
+        req1 = FrameworkRequirement.objects.create(
+            framework=self.framework, code="EDGE-REQ1", title="Numeric Requirement", pillar="ENV", is_mandatory=True
+        )
+        req2 = FrameworkRequirement.objects.create(
+            framework=self.framework, code="EDGE-REQ2", title="Boolean Requirement", pillar="ENV", is_mandatory=True
+        )
+        IndicatorFrameworkMapping.objects.create(
+            framework=self.framework, requirement=req1, indicator=self.ind_num,
+            is_active=True, is_primary=True, mapping_type="primary"
+        )
+        IndicatorFrameworkMapping.objects.create(
+            framework=self.framework, requirement=req2, indicator=self.ind_bool,
+            is_active=True, is_primary=True, mapping_type="primary"
+        )
+        
         OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind_num, is_active=True)
         OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind_bool, is_active=True)
+        OrganizationIndicator.objects.create(organization=self.org, indicator=self.ind_derived, is_active=True)
 
         self.period = ReportingPeriod.objects.create(organization=self.org, year=2025)
 
@@ -53,3 +78,13 @@ class EdgeCaseTests(TestCase):
         self.framework.save(update_fields=['is_active'])
         with self.assertRaises(ValidationError):
             submit_indicator_value(org=self.org, user=self.user, indicator_id=str(self.ind_num.id), reporting_period_id=str(self.period.id), value=1)
+
+    def test_submit_derived_indicator_directly_rejected(self):
+        with self.assertRaises(ValidationError):
+            submit_indicator_value(
+                org=self.org,
+                user=self.user,
+                indicator_id=str(self.ind_derived.id),
+                reporting_period_id=str(self.period.id),
+                value=1,
+            )

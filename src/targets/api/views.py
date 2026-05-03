@@ -11,10 +11,15 @@ from targets.models import TargetGoal, TargetMilestone
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from indicators.models import Indicator
+from indicators.selectors.queries import get_active_indicators
 from organizations.models import Facility
 from targets.selectors.target_selectors import get_goals_for_organization, get_goal_milestones
 from targets.services.target_progress_service import calculate_target_progress
 from .serializers import TargetGoalCreateSerializer, TargetGoalPatchSerializer, MilestoneCreateSerializer
+
+
+def _indicator_is_configured_for_org(*, org, indicator_id) -> bool:
+    return get_active_indicators(org).filter(id=indicator_id).exists()
 
 
 class GoalCreateView(APIView):
@@ -36,7 +41,16 @@ class GoalCreateView(APIView):
                 status.HTTP_400_BAD_REQUEST
                 )
 
-        # minimal create; rely on higher-level validation in future
+        if not _indicator_is_configured_for_org(org=org, indicator_id=data.get('indicator_id')):
+            return problem_response(
+                {
+                    'type': f"{settings.PROBLEM_BASE_URL}/invalid-request",
+                    'title': 'Invalid indicator',
+                    'detail': 'indicator is not configured for this organization',
+                },
+                status.HTTP_400_BAD_REQUEST,
+            )
+
         goal = TargetGoal.objects.create(
             organization=org,
             indicator_id=data.get('indicator_id'),
@@ -92,10 +106,16 @@ class GoalListView(APIView):
                 status.HTTP_400_BAD_REQUEST
                 )
 
-        # validate referenced indicator
         indicator_id = data.get('indicator_id')
-        if not Indicator.objects.filter(id=indicator_id).exists():
-            return problem_response({'type': f"{settings.PROBLEM_BASE_URL}/invalid-request", 'title': 'Invalid indicator', 'detail': 'indicator not found'}, status.HTTP_400_BAD_REQUEST)
+        if not _indicator_is_configured_for_org(org=org, indicator_id=indicator_id):
+            return problem_response(
+                {
+                    'type': f"{settings.PROBLEM_BASE_URL}/invalid-request",
+                    'title': 'Invalid indicator',
+                    'detail': 'indicator is not configured for this organization',
+                },
+                status.HTTP_400_BAD_REQUEST,
+            )
 
         # validate facility if provided
         facility_id = data.get('facility_id')

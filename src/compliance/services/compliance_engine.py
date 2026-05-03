@@ -47,7 +47,9 @@ def compute_organization_compliance(organization, period) -> Dict[str, Any]:
     from organizations.models import OrganizationFramework, RegulatoryFramework as Framework
 
     frameworks = Framework.objects.filter(
-        id__in=OrganizationFramework.objects.filter(organization=organization).values_list('framework_id', flat=True)
+        id__in=OrganizationFramework.objects.filter(
+            organization=organization, is_enabled=True
+        ).values_list('framework_id', flat=True)
     )
 
     framework_results: List[Dict[str, Any]] = []
@@ -67,9 +69,10 @@ def compute_organization_compliance(organization, period) -> Dict[str, Any]:
     optional_total = 0
     optional_submitted = 0
     for fw in frameworks:
-        req = get_required_indicators(fw)
-        all_fi = fw.framework_indicators.all()
-        optional_count = all_fi.filter(is_required=False).count()
+        from compliance.models import IndicatorFrameworkMapping
+        optional_count = IndicatorFrameworkMapping.objects.filter(
+            requirement__framework=fw, requirement__is_mandatory=False, is_active=True
+        ).values('indicator').distinct().count()
         optional_total += optional_count
         optional_submitted += len(get_optional_completed(organization, fw, period))
 
@@ -95,7 +98,6 @@ def facility_rollup(organization, framework, period):
     """Return completion per facility as list of dicts {facility_id, completion_percent}."""
     # DataSubmission has facility field
     from submissions.models import DataSubmission
-    from indicators.models import FrameworkIndicator
 
     required_inds = [i.id for i in get_required_indicators(framework)]
 

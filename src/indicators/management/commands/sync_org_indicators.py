@@ -3,7 +3,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from organizations.models import Organization, OrganizationFramework
-from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from indicators.models import Indicator, OrganizationIndicator
+from compliance.models import IndicatorFrameworkMapping
 
 
 class Command(BaseCommand):
@@ -51,14 +52,18 @@ class Command(BaseCommand):
             self.stdout.write("  no enabled frameworks, skipping")
             return 0, 0, 0
 
-        fw_ind_qs = FrameworkIndicator.objects.filter(framework_id__in=enabled_fw_ids).select_related('indicator')
+        mappings_qs = (
+            IndicatorFrameworkMapping.objects
+            .filter(requirement__framework__in=enabled_fw_ids, is_active=True)
+            .select_related('indicator', 'requirement')
+        )
 
         indicator_map: Dict[str, Dict] = {}
-        for fi in fw_ind_qs:
-            ind_id = str(fi.indicator_id)
-            entry = indicator_map.setdefault(ind_id, {"indicator": fi.indicator, "frameworks": set(), "required": False})
-            entry["frameworks"].add(fi.framework_id)
-            if fi.is_required:
+        for mapping in mappings_qs:
+            ind_id = str(mapping.indicator_id)
+            entry = indicator_map.setdefault(ind_id, {"indicator": mapping.indicator, "frameworks": set(), "required": False})
+            entry["frameworks"].add(mapping.requirement.framework_id)
+            if mapping.requirement.is_mandatory:
                 entry["required"] = True
 
         indicator_ids = [k for k in indicator_map.keys()]

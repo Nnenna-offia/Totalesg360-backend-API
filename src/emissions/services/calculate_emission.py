@@ -1,13 +1,23 @@
 from decimal import Decimal
+import logging
 from django.db import transaction
 from django.db.models import Q
+from activities.models.scope import Scope
 from emissions.models.emission_factor import EmissionFactor
 from emissions.models.calculated_emission import CalculatedEmission
+from emissions.services.indicator_traceability import get_expected_scope_code_for_input
+
+
+logger = logging.getLogger(__name__)
 
 
 def _find_best_factor(activity_type, org_country, year):
-    # Prefer exact country+year, then country+closest year, then global (country=None) entries
-    qs = EmissionFactor.objects.filter(activity_type=activity_type)
+    # Prefer indicator-linked factors, then activity-type factors.
+    indicator = getattr(activity_type, "indicator", None)
+    if indicator is not None:
+        qs = EmissionFactor.objects.filter(Q(indicator=indicator) | Q(activity_type=activity_type))
+    else:
+        qs = EmissionFactor.objects.filter(activity_type=activity_type)
     # try exact match
     f = qs.filter(country=org_country, year=year).first()
     if f:
@@ -36,9 +46,45 @@ def calculate_and_store(activity_submission):
         # No factor found; do not create calculation but return None
         return None
 
+    input_indicator_code = getattr(getattr(activity_type, "indicator", None), "code", None)
+    expected_scope_code = get_expected_scope_code_for_input(input_indicator_code)
+    scope_for_emission = activity_type.scope
+
+    # Traceability is part of emission calculation logic: input indicator -> derived scope.
+    if expected_scope_code:
+        resolved_scope = Scope.objects.filter(code=expected_scope_code).first()
+        if resolved_scope:
+            scope_for_emission = resolved_scope
+            if getattr(activity_type.scope, "code", None) != expected_scope_code:
+                logger.warning(
+                    "Activity scope differs from traceability scope; using traceability scope",
+                    extra={
+                        "activity_type_id": str(activity_type.id),
+                        "activity_scope": getattr(activity_type.scope, "code", None),
+                        "expected_scope": expected_scope_code,
+                        "input_indicator_code": input_indicator_code,
+                    },
+                )
+        else:
+            logger.warning(
+                "Traceability scope code not found in Scope table",
+                extra={
+                    "expected_scope": expected_scope_code,
+                    "input_indicator_code": input_indicator_code,
+                },
+            )
+    else:
+        logger.warning(
+            "No traceability mapping found for input indicator during emission calculation",
+            extra={
+                "activity_type_id": str(activity_type.id),
+                "input_indicator_code": input_indicator_code,
+            },
+        )
+
     # compute
     value = Decimal(activity_submission.value)
-    emission_value = (value * Decimal(factor.factor)).quantize(Decimal('0.000001'))
+    emission_value = (value * Decimal(factor.effective_factor_value)).quantize(Decimal('0.000001'))
 
     with transaction.atomic():
         obj, created = CalculatedEmission.objects.update_or_create(
@@ -47,7 +93,7 @@ def calculate_and_store(activity_submission):
                 'organization': org,
                 'facility': facility,
                 'emission_factor': factor,
-                'scope': activity_type.scope,
+                'scope': scope_for_emission,
                 'emission_value': emission_value,
                 'reporting_period': activity_submission.reporting_period,
             }

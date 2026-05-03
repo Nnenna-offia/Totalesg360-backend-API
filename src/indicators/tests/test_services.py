@@ -1,6 +1,7 @@
 from django.test import TestCase
 
-from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from indicators.models import Indicator, OrganizationIndicator
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
 from organizations.models import RegulatoryFramework, Organization, OrganizationFramework
 from indicators.services import sync_org_indicators_for_org
 
@@ -16,8 +17,14 @@ class IndicatorServicesTest(TestCase):
         self.fw2 = RegulatoryFramework.objects.create(code="SFW2", name="Svc Framework 2", jurisdiction="INTERNATIONAL")
 
         # Framework mappings: fw1 requires ind_a; fw2 requires ind_b
-        FrameworkIndicator.objects.create(framework=self.fw1, indicator=self.ind_a, is_required=True)
-        FrameworkIndicator.objects.create(framework=self.fw2, indicator=self.ind_b, is_required=True)
+        fw1_req = FrameworkRequirement.objects.create(
+            framework=self.fw1, code="SFW1_REQ_A", title="SFW1 Required A", pillar="ENV", is_mandatory=True
+        )
+        fw2_req = FrameworkRequirement.objects.create(
+            framework=self.fw2, code="SFW2_REQ_B", title="SFW2 Required B", pillar="SOC", is_mandatory=True
+        )
+        IndicatorFrameworkMapping.objects.create(framework=self.fw1, requirement=fw1_req, indicator=self.ind_a, is_active=True, is_primary=True, mapping_type="primary")
+        IndicatorFrameworkMapping.objects.create(framework=self.fw2, requirement=fw2_req, indicator=self.ind_b, is_active=True, is_primary=True, mapping_type="primary")
 
         # Organization
         self.org = Organization.objects.create(name="SvcOrg", sector="finance", country="NG")

@@ -11,7 +11,8 @@ from roles.models.role_capability import RoleCapability
 from roles.models.capability import Capability
 
 from submissions.models import ReportingPeriod, DataSubmission
-from indicators.models import Indicator, FrameworkIndicator
+from indicators.models import Indicator
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
 from organizations.models.regulatory_framework import RegulatoryFramework
 
 
@@ -35,9 +36,11 @@ class ComplianceAPITest(TestCase):
         self.framework = RegulatoryFramework.objects.create(code='TF', name='Test Framework', jurisdiction=RegulatoryFramework.Jurisdiction.INTERNATIONAL)
         self.ind1 = Indicator.objects.create(code='I1', name='Indicator 1', pillar=Indicator.Pillar.ENVIRONMENTAL, data_type=Indicator.DataType.NUMBER)
         self.ind2 = Indicator.objects.create(code='I2', name='Indicator 2', pillar=Indicator.Pillar.ENVIRONMENTAL, data_type=Indicator.DataType.NUMBER)
-        # map indicators to framework
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind1, is_required=True)
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind2, is_required=False)
+        # map indicators to framework requirements
+        req1 = FrameworkRequirement.objects.create(framework=self.framework, code='REQ1', title='Requirement 1', pillar='ENV', is_mandatory=True)
+        req2 = FrameworkRequirement.objects.create(framework=self.framework, code='REQ2', title='Requirement 2', pillar='ENV', is_mandatory=False)
+        IndicatorFrameworkMapping.objects.create(framework=self.framework, requirement=req1, indicator=self.ind1, is_active=True, is_primary=True, mapping_type='primary')
+        IndicatorFrameworkMapping.objects.create(framework=self.framework, requirement=req2, indicator=self.ind2, is_active=True, is_primary=True, mapping_type='primary')
 
         self.period = ReportingPeriod.objects.create(organization=self.org, year=2023)
 
@@ -81,3 +84,40 @@ class ComplianceAPITest(TestCase):
         self.assertEqual(resp2.status_code, 200)
         body2 = resp2.json()
         self.assertIn('missing', body2.get('data', {}))
+
+
+class ComplianceMasterDataAPITest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.staff = User.objects.create_user(
+            username='staff', email='staff@example.com', password='pass', is_staff=True
+        )
+        self.framework = RegulatoryFramework.objects.create(
+            code='GRI',
+            name='Global Reporting Initiative',
+            jurisdiction=RegulatoryFramework.Jurisdiction.INTERNATIONAL,
+            priority=100,
+        )
+
+    def test_framework_list_is_public(self):
+        resp = self.client.get('/api/v1/compliance/frameworks/')
+        self.assertEqual(resp.status_code, 200)
+
+        body = resp.json()
+        if isinstance(body, list):
+            payload = body
+        else:
+            payload = body.get('results', body)
+        self.assertTrue(len(payload) >= 1)
+
+    def test_framework_patch_requires_staff_or_global_capability(self):
+        detail_url = f'/api/v1/compliance/frameworks/{self.framework.id}/'
+
+        resp = self.client.patch(detail_url, {'name': 'Updated Name'}, format='json')
+        self.assertIn(resp.status_code, (401, 403))
+
+        self.client.force_authenticate(user=self.staff)
+        resp = self.client.patch(detail_url, {'name': 'Updated Name'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.framework.refresh_from_db()
+        self.assertEqual(self.framework.name, 'Updated Name')

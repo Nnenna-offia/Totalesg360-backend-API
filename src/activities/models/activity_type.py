@@ -1,10 +1,21 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 from common.models import BaseModel
 
 from activities.models.scope import Scope
 
 
 class ActivityType(BaseModel):
+    """
+    collection_frequency is used for:
+    - UI guidance
+    - planning data collection workflows
+
+    It does NOT control reporting periods.
+
+    Reporting periods are controlled strictly by organization ESG settings.
+    """
+
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     unit = models.CharField(max_length=50)
@@ -28,6 +39,17 @@ class ActivityType(BaseModel):
 
     # Whether submission of this activity is mandatory
     is_required = models.BooleanField(default=False, db_index=True)
+
+    class CollectionFrequency(models.TextChoices):
+        MONTHLY = "MONTHLY", "Monthly"
+        QUARTERLY = "QUARTERLY", "Quarterly"
+
+    collection_frequency = models.CharField(
+        max_length=20,
+        choices=CollectionFrequency.choices,
+        default=CollectionFrequency.MONTHLY,
+        db_index=True,
+    )
     
     # Link to indicator: activities generate indicator values
     indicator = models.ForeignKey(
@@ -41,6 +63,8 @@ class ActivityType(BaseModel):
         # Auto-sync unit from linked indicator for consistency.
         # If indicator is set, prefer its canonical unit.
         if getattr(self, "indicator", None):
+            if self.indicator.indicator_type == self.indicator.IndicatorType.DERIVED:
+                raise ValidationError("Derived indicators cannot be assigned directly to activity types")
             indicator_unit = getattr(self.indicator, "unit", None)
             if indicator_unit:
                 self.unit = indicator_unit

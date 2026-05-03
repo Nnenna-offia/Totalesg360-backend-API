@@ -1,8 +1,9 @@
 from typing import List, Optional
-from django.db.models import Max
+from django.db.models import Sum
 
 from targets.models import TargetGoal, TargetMilestone
-from submissions.models import DataSubmission, ReportingPeriod
+from indicators.models import IndicatorValue
+from submissions.models import ReportingPeriod
 
 
 def get_goals_for_organization(org) -> List[TargetGoal]:
@@ -13,23 +14,19 @@ def get_goal_milestones(goal: TargetGoal) -> List[TargetMilestone]:
     return list(goal.milestones.all())
 
 
-def get_indicator_current_value(indicator, org, period: Optional[ReportingPeriod] = None):
-    """Return the latest submitted value for indicator for org and optional period.
+def get_indicator_current_value(indicator, org, period: Optional[ReportingPeriod] = None, period_type: Optional[str] = None):
+    """Return current numeric value from IndicatorValue for an org+indicator.
 
-    If `period` is provided, return submissions within that reporting period.
-    Otherwise return the most recent DataSubmission.value_number for that org+indicator.
+    If `period` is provided, aggregate all facility values in that period.
+    Otherwise aggregate values from active reporting period(s).
     """
-    qs = DataSubmission.objects.filter(organization=org, indicator=indicator)
+    qs = IndicatorValue.objects.filter(organization=org, indicator=indicator)
     if period:
         qs = qs.filter(reporting_period=period)
-    # prefer submitted/approved values; use value_number for numeric indicators
-    ds = qs.order_by('-submitted_at').first()
-    if not ds:
-        return None
-    # infer numeric value field
-    if ds.value_number is not None:
-        return ds.value_number
-    if ds.value_boolean is not None:
-        return 1.0 if ds.value_boolean else 0.0
-    # fallback: None for non-numeric
-    return None
+    else:
+        qs = qs.filter(reporting_period__is_active=True)
+        if period_type:
+            qs = qs.filter(reporting_period__period_type=period_type)
+
+    total = qs.aggregate(total=Sum('value')).get('total')
+    return float(total) if total is not None else None

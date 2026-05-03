@@ -4,6 +4,7 @@ from .views import (
 	ActivitySubmissionCreateAPIView,
 	ActivityTypeListCreateAPIView,
 	ActivityTypeDetailAPIView,
+	OrgActiveActivityTypesView,
 	ScopeListCreateAPIView,
 	ScopeDetailAPIView,
 	ActivitySubmissionListAPIView,
@@ -20,6 +21,7 @@ from .views import (
 urlpatterns = [
 	# Activity Types
 	path('types/', ActivityTypeListCreateAPIView.as_view(), name='activity-types-list'),
+	path('types/active/', OrgActiveActivityTypesView.as_view(), name='activity-types-active'),
 	path('types/<uuid:pk>/', ActivityTypeDetailAPIView.as_view(), name='activity-types-detail'),
 	
 	# Scopes

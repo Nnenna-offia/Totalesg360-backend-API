@@ -19,6 +19,10 @@ class Indicator(BaseModel):
         ACTIVITY = "activity", "Activity Based"
         DIRECT = "direct", "Direct Submission"
 
+    class IndicatorType(models.TextChoices):
+        INPUT = "INPUT", "Input"
+        DERIVED = "DERIVED", "Derived"
+
     code = models.CharField(max_length=100, unique=True)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -37,6 +41,16 @@ class Indicator(BaseModel):
         help_text="Activity-based indicators are calculated from activities; direct indicators are manually submitted"
     )
 
+    indicator_type = models.CharField(
+        max_length=20,
+        choices=IndicatorType.choices,
+        default=IndicatorType.INPUT,
+        db_index=True,
+        help_text="INPUT indicators store raw operational data; DERIVED indicators are calculated outputs.",
+    )
+    emission_factor = models.FloatField(null=True, blank=True)
+    calculation_method = models.CharField(max_length=100, null=True, blank=True)
+
     class Meta:
         db_table = "indicators_indicator"
         verbose_name = "Indicator"
@@ -45,41 +59,11 @@ class Indicator(BaseModel):
             models.Index(fields=["pillar"]),
             models.Index(fields=["data_type"]),
             models.Index(fields=["is_active"]),
+            models.Index(fields=["indicator_type"]),
         ]
 
     def __str__(self):
         return f"{self.code} - {self.name}"
-
-
-class FrameworkIndicator(BaseModel):
-    """Mapping of RegulatoryFramework -> Indicator with requirement metadata."""
-
-    framework = models.ForeignKey(
-        "organizations.RegulatoryFramework",
-        on_delete=models.PROTECT,
-        related_name="framework_indicators",
-    )
-    indicator = models.ForeignKey(
-        "indicators.Indicator",
-        on_delete=models.PROTECT,
-        related_name="framework_mappings",
-    )
-    is_required = models.BooleanField(default=False, db_index=True)
-    display_order = models.IntegerField(default=0, db_index=True)
-    metadata = models.JSONField(default=dict, blank=True)
-
-    class Meta:
-        db_table = "indicators_frameworkindicator"
-        verbose_name = "Framework Indicator"
-        verbose_name_plural = "Framework Indicators"
-        unique_together = (("framework", "indicator"),)
-        indexes = [
-            models.Index(fields=["framework", "is_required"]),
-            models.Index(fields=["framework", "display_order"]),
-        ]
-
-    def __str__(self):
-        return f"{self.framework} → {self.indicator.code} ({'required' if self.is_required else 'optional'})"
 
 
 class OrganizationIndicator(BaseModel):

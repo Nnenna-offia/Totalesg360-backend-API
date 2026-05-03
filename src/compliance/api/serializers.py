@@ -76,6 +76,7 @@ class IndicatorFrameworkMappingSerializer(serializers.ModelSerializer):
     requirement_code = serializers.CharField(source='requirement.code', read_only=True)
     requirement_title = serializers.CharField(source='requirement.title', read_only=True)
     mapping_type_display = serializers.CharField(source='get_mapping_type_display', read_only=True)
+    coverage_percent = serializers.SerializerMethodField()
     coverage_status = serializers.SerializerMethodField()
     
     class Meta:
@@ -93,6 +94,10 @@ class IndicatorFrameworkMappingSerializer(serializers.ModelSerializer):
     def get_coverage_status(self, obj):
         """Get human-readable coverage status."""
         return obj.get_coverage_status()
+
+    def get_coverage_percent(self, obj):
+        """Get dynamic coverage based on IndicatorValue presence."""
+        return obj.get_dynamic_coverage_percent()
 
 
 class IndicatorFrameworkMappingDetailSerializer(IndicatorFrameworkMappingSerializer):
@@ -216,9 +221,9 @@ class FrameworkIndicatorsSerializer(serializers.Serializer):
                         'requirement_title': m.requirement.title,
                         'is_primary': m.is_primary,
                         'mapping_type': m.get_mapping_type_display(),
-                        'coverage_percent': m.coverage_percent,
+                        'coverage_percent': m.get_dynamic_coverage_percent(),
                     }
-                    for m in indicator.framework_mappings.all()
+                    for m in indicator.regulatory_requirement_mappings.filter(framework=framework, is_active=True)
                 ]
             })
         
@@ -245,17 +250,61 @@ class CreateIndicatorFrameworkMappingSerializer(serializers.ModelSerializer):
         model = IndicatorFrameworkMapping
         fields = [
             'indicator', 'framework', 'requirement', 'mapping_type',
-            'is_primary', 'rationale', 'coverage_percent', 'is_active', 'notes'
+            'is_primary', 'rationale', 'is_active', 'notes'
         ]
     
     def validate(self, data):
         """Validate requirement belongs to framework."""
-        framework = data.get('framework')
-        requirement = data.get('requirement')
+        framework = data.get('framework') or getattr(self.instance, 'framework', None)
+        requirement = data.get('requirement') or getattr(self.instance, 'requirement', None)
         
         if requirement and framework and requirement.framework_id != framework.id:
             raise serializers.ValidationError(
                 "Requirement must belong to the specified framework"
             )
+
+        indicator = data.get('indicator')
+        mapping_type = data.get('mapping_type')
+
+        if indicator and mapping_type == IndicatorFrameworkMapping.MappingType.PRIMARY:
+            if indicator.indicator_type != indicator.IndicatorType.DERIVED:
+                raise serializers.ValidationError(
+                    "PRIMARY mappings must use DERIVED indicators"
+                )
+
+        if indicator and mapping_type == IndicatorFrameworkMapping.MappingType.SECONDARY:
+            if indicator.indicator_type != indicator.IndicatorType.INPUT:
+                raise serializers.ValidationError(
+                    "SECONDARY mappings must use INPUT indicators"
+                )
+            has_primary = IndicatorFrameworkMapping.objects.filter(
+                framework=framework,
+                requirement=requirement,
+                is_active=True,
+                is_primary=True,
+            ).exists()
+            if not has_primary:
+                raise serializers.ValidationError(
+                    "SECONDARY mappings require at least one PRIMARY mapping for the requirement"
+                )
+
+        if mapping_type == IndicatorFrameworkMapping.MappingType.DERIVED:
+            data['is_primary'] = False
+
+        current_is_primary = getattr(self.instance, 'is_primary', False)
+        target_is_primary = data.get('is_primary', current_is_primary)
+        if requirement and current_is_primary and not target_is_primary:
+            has_other_primary = IndicatorFrameworkMapping.objects.filter(
+                framework=framework,
+                requirement=requirement,
+                is_active=True,
+                is_primary=True,
+            ).exclude(id=getattr(self.instance, 'id', None)).exists()
+            if not has_other_primary:
+                raise serializers.ValidationError(
+                    "Each requirement must keep at least one PRIMARY mapping"
+                )
+
+        data['coverage_percent'] = 0
         
         return data

@@ -100,6 +100,12 @@ def submit_indicator_value(*, org, user, indicator_id: str, reporting_period_id:
             "Please submit activity data instead."
         )
 
+    if indicator.indicator_type == Indicator.IndicatorType.DERIVED:
+        raise ValidationError(
+            "Derived indicators cannot be submitted directly. "
+            "Submit input activities or direct source indicators instead."
+        )
+
     if reporting_period_id:
         try:
             period = ReportingPeriod.objects.get(id=reporting_period_id, organization=org)

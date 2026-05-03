@@ -1,5 +1,5 @@
 from .activitySubmission import ActivitySubmissionCreateAPIView
-from .activitytype import ActivityTypeListCreateAPIView, ActivityTypeDetailAPIView
+from .activitytype import ActivityTypeListCreateAPIView, ActivityTypeDetailAPIView, OrgActiveActivityTypesView
 from .scope import ScopeListCreateAPIView, ScopeDetailAPIView
 from .submission import (
 	ActivitySubmissionListAPIView,
@@ -21,6 +21,7 @@ __all__ = [
 	"ActivitySubmissionCreateAPIView",
 	"ActivityTypeListCreateAPIView",
 	"ActivityTypeDetailAPIView",
+	"OrgActiveActivityTypesView",
 	"ScopeListCreateAPIView",
 	"ScopeDetailAPIView",
 	"ActivitySubmissionListAPIView",

@@ -194,9 +194,10 @@ OTP_MAX_RESEND_PER_HOUR = int(os.getenv("OTP_MAX_RESEND_PER_HOUR", 5))
 # Problem document base URL for RFC7807 `type` fields (configurable via .env)
 PROBLEM_BASE_URL = os.getenv("PROBLEM_BASE_URL", "https://totalesg360.com/probs")
 
-# In development/tests run tasks eagerly if DEBUG is True
-CELERY_TASK_ALWAYS_EAGER = DEBUG
-CELERY_TASK_EAGER_PROPAGATES = True
+# Run tasks in the real worker by default, even in development.
+# Override with CELERY_TASK_ALWAYS_EAGER=1 only when you explicitly want inline execution.
+CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "0").lower() in ("1", "true", "yes")
+CELERY_TASK_EAGER_PROPAGATES = os.getenv("CELERY_TASK_EAGER_PROPAGATES", "1").lower() in ("1", "true", "yes")
 
 # ---------------------------
 # JWT Authentication Configuration

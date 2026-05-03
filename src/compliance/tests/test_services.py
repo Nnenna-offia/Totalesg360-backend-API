@@ -1,7 +1,8 @@
 from django.test import TestCase
 
 from organizations.models import Organization, RegulatoryFramework
-from indicators.models import Indicator, FrameworkIndicator
+from indicators.models import Indicator
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
 from submissions.models import ReportingPeriod, DataSubmission
 
 from compliance.services import compute_framework_completion, compute_organization_compliance, facility_rollup
@@ -17,9 +18,14 @@ class ComplianceServicesTests(TestCase):
         self.ind2 = Indicator.objects.create(code='I2', name='Required 2', pillar='ENV', data_type='number')
         self.ind3 = Indicator.objects.create(code='I3', name='Optional 1', pillar='ENV', data_type='number')
 
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind1, is_required=True)
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind2, is_required=True)
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.ind3, is_required=False)
+        # Create requirements and mappings
+        req1 = FrameworkRequirement.objects.create(framework=self.framework, code='REQ1', title='Required 1', pillar='ENV', is_mandatory=True)
+        req2 = FrameworkRequirement.objects.create(framework=self.framework, code='REQ2', title='Required 2', pillar='ENV', is_mandatory=True)
+        req3 = FrameworkRequirement.objects.create(framework=self.framework, code='REQ3', title='Optional 1', pillar='ENV', is_mandatory=False)
+        
+        IndicatorFrameworkMapping.objects.create(framework=self.framework, requirement=req1, indicator=self.ind1, is_active=True, is_primary=True, mapping_type='primary')
+        IndicatorFrameworkMapping.objects.create(framework=self.framework, requirement=req2, indicator=self.ind2, is_active=True, is_primary=True, mapping_type='primary')
+        IndicatorFrameworkMapping.objects.create(framework=self.framework, requirement=req3, indicator=self.ind3, is_active=True, is_primary=True, mapping_type='primary')
 
         # assign framework to org
         from organizations.models import OrganizationFramework

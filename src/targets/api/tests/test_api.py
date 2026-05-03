@@ -7,8 +7,10 @@ from roles.models import Role
 from roles.models.capability import Capability
 from roles.models.role_capability import RoleCapability
 
-from indicators.models import Indicator
-from submissions.models import ReportingPeriod, DataSubmission
+from indicators.models import Indicator, IndicatorValue
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
+from organizations.models import RegulatoryFramework, OrganizationFramework
+from submissions.models import ReportingPeriod
 from targets.models import TargetGoal, TargetMilestone
 
 User = get_user_model()
@@ -33,6 +35,25 @@ class TargetsAPITest(TestCase):
         RoleCapability.objects.get_or_create(role=self.role, capability=cap_edit)
 
         self.ind = Indicator.objects.create(code='S1', name='Scope 1', pillar=Indicator.Pillar.ENVIRONMENTAL, data_type=Indicator.DataType.NUMBER)
+        self.other_ind = Indicator.objects.create(code='S2', name='Scope 2', pillar=Indicator.Pillar.ENVIRONMENTAL, data_type=Indicator.DataType.NUMBER)
+
+        framework = RegulatoryFramework.objects.create(code='TGT-FW', name='Target FW', jurisdiction='INTERNATIONAL')
+        OrganizationFramework.objects.create(organization=self.org, framework=framework, is_enabled=True)
+        requirement = FrameworkRequirement.objects.create(
+            framework=framework,
+            code='TGT-REQ',
+            title='Target Requirement',
+            pillar='ENV',
+            is_mandatory=True,
+        )
+        IndicatorFrameworkMapping.objects.create(
+            framework=framework,
+            requirement=requirement,
+            indicator=self.ind,
+            is_active=True,
+            is_primary=True,
+            mapping_type='primary',
+        )
 
     def auth_headers(self):
         # force auth and org header
@@ -44,13 +65,14 @@ class TargetsAPITest(TestCase):
         payload = {
             'indicator_id': str(self.ind.id),
             'name': 'Reduce S1',
+            'reporting_frequency': 'ANNUAL',
             'baseline_year': 2022,
             'baseline_value': 1200.0,
             'target_year': 2030,
             'target_value': 800.0,
             'direction': 'decrease',
         }
-        resp = self.client.post('/api/v1/targets/goals/create', data=payload, format='json', **headers)
+        resp = self.client.post('/api/v1/targets/goals', data=payload, format='json', **headers)
         self.assertEqual(resp.status_code, 201)
 
         # list
@@ -65,13 +87,32 @@ class TargetsAPITest(TestCase):
         headers = self.auth_headers()
         # create milestone
         payload = {'goal_id': str(g.id), 'year': 2025, 'target_value': 90.0}
-        resp = self.client.post('/api/v1/targets/milestones/create', data=payload, format='json', **headers)
+        resp = self.client.post('/api/v1/targets/milestones', data=payload, format='json', **headers)
         self.assertEqual(resp.status_code, 201)
 
-        # add submission and fetch progress
+        # add aggregated indicator value and fetch progress
         period = ReportingPeriod.objects.create(organization=self.org, year=2023)
-        DataSubmission.objects.create(organization=self.org, reporting_period=period, indicator=self.ind, value_number=95.0)
+        IndicatorValue.objects.create(organization=self.org, reporting_period=period, indicator=self.ind, value=95.0)
         resp2 = self.client.get(f'/api/v1/targets/progress/{g.id}', **headers)
         self.assertEqual(resp2.status_code, 200)
         body = resp2.json()
         self.assertIn('progress', body.get('data', {}))
+
+    def test_create_goal_rejects_indicator_not_configured_for_org(self):
+        headers = self.auth_headers()
+        payload = {
+            'indicator_id': str(self.other_ind.id),
+            'name': 'Reduce S2',
+            'reporting_frequency': 'ANNUAL',
+            'baseline_year': 2022,
+            'baseline_value': 1200.0,
+            'target_year': 2030,
+            'target_value': 800.0,
+            'direction': 'decrease',
+        }
+
+        resp = self.client.post('/api/v1/targets/goals', data=payload, format='json', **headers)
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.data['title'], 'Invalid indicator')
+        self.assertIn('not configured', resp.data['detail'])

@@ -13,6 +13,10 @@ class IndicatorSerializer(serializers.ModelSerializer):
             "pillar",
             "data_type",
             "unit",
+            "indicator_type",
+            "emission_factor",
+            "calculation_method",
+            "collection_method",
             "is_active",
             "version",
         ]

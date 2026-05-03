@@ -20,6 +20,8 @@ from rest_framework.permissions import IsAdminUser
 from submissions.api.serializers import ActiveReportingPeriodSerializer
 from submissions.services.reporting_period import get_or_raise_active_reporting_period
 from targets.models import TargetGoal
+from indicators.models import IndicatorValue
+from submissions.api.serializers import IndicatorValuePeriodSerializer
 
 
 class SubmitIndicatorAPIView(APIView):
@@ -116,6 +118,69 @@ class PeriodSubmissionsAPIView(APIView):
 			"previous": paginator.get_previous_link(),
 		}
 
+		return success_response(data=out.data, meta=meta)
+
+
+class PeriodIndicatorValuesAPIView(APIView):
+	permission_classes = [IsOrgMember]
+
+	def get(self, request, period_id):
+		org, _ = get_org_and_membership(request=request)
+
+		try:
+			ReportingPeriod.objects.get(id=period_id, organization=org)
+		except ReportingPeriod.DoesNotExist:
+			problem = {
+				"type": f"{settings.PROBLEM_BASE_URL}/not-found",
+				"title": "Not found",
+				"status": status.HTTP_404_NOT_FOUND,
+				"detail": "Reporting period not found for organization",
+				"instance": getattr(request, "path", None),
+			}
+			return problem_response(problem, status.HTTP_404_NOT_FOUND)
+
+		queryset = IndicatorValue.objects.filter(
+			organization=org,
+			reporting_period_id=period_id,
+		).select_related("indicator", "facility")
+
+		pillar = request.query_params.get("pillar")
+		if pillar:
+			queryset = queryset.filter(indicator__pillar=pillar)
+
+		indicator_code = request.query_params.get("indicator_code")
+		if indicator_code:
+			queryset = queryset.filter(indicator__code=indicator_code)
+
+		facility_id = request.query_params.get("facility_id")
+		if facility_id:
+			queryset = queryset.filter(facility_id=facility_id)
+
+		queryset = queryset.order_by("indicator__code", "facility__name", "-updated_at")
+
+		paginator = PageNumberPagination()
+		paginator.page_size_query_param = "page_size"
+		page = paginator.paginate_queryset(queryset, request, view=self)
+
+		if page is None:
+			out = IndicatorValuePeriodSerializer(queryset, many=True)
+			meta = {
+				"count": queryset.count(),
+				"page_size": None,
+				"current_page": None,
+				"next": None,
+				"previous": None,
+			}
+			return success_response(data=out.data, meta=meta)
+
+		out = IndicatorValuePeriodSerializer(page, many=True)
+		meta = {
+			"count": paginator.page.paginator.count if getattr(paginator, "page", None) is not None else queryset.count(),
+			"page_size": paginator.get_page_size(request) or None,
+			"current_page": getattr(paginator.page, "number", None) if getattr(paginator, "page", None) is not None else None,
+			"next": paginator.get_next_link(),
+			"previous": paginator.get_previous_link(),
+		}
 		return success_response(data=out.data, meta=meta)
 
 

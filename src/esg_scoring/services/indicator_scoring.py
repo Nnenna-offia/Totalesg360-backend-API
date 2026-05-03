@@ -1,11 +1,13 @@
 """Indicator Scoring Service - calculates scores for individual indicators."""
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 import logging
 
 from organizations.models import Organization
 from indicators.models import Indicator
-from submissions.models import DataSubmission, ReportingPeriod
+from indicators.models import IndicatorValue
+from submissions.models import ReportingPeriod
 from targets.models import TargetGoal
 from esg_scoring.models import IndicatorScore
 
@@ -39,19 +41,18 @@ def calculate_indicator_score(
     """
 
     try:
-        # Get all submissions (only approved ones for scoring)
-        submissions = DataSubmission.objects.filter(
+        # IndicatorValue is the single source of truth for scored values.
+        indicator_values = IndicatorValue.objects.filter(
             organization=organization,
             indicator=indicator,
             reporting_period=reporting_period,
-            status=DataSubmission.Status.APPROVED
         )
 
-        if not submissions.exists():
+        if not indicator_values.exists():
             logger.warning(
-                f"No approved submissions for {indicator.name} in {organization.name}"
+                f"No indicator values for {indicator.name} in {organization.name}"
             )
-            # Score 0 if no submissions
+            # Score 0 if no values exist yet.
             return _create_or_update_indicator_score(
                 organization=organization,
                 indicator=indicator,
@@ -61,14 +62,17 @@ def calculate_indicator_score(
                 baseline=0,
                 target=0,
                 progress=0,
-                status=IndicatorScore.Status.POOR,
-                calculation_method="no_submissions",
+                status=IndicatorScore.ScoreStatus.POOR,
+                calculation_method="no_indicator_value",
             )
+
+        total_value = float(indicator_values.aggregate(total=Sum("value")).get("total") or 0)
 
         # Get target goal
         target_goal = TargetGoal.objects.filter(
             organization=organization,
             indicator=indicator,
+            status=TargetGoal.Status.ACTIVE,
         ).first()
 
         if not target_goal:
@@ -77,27 +81,10 @@ def calculate_indicator_score(
             target = 0
             score = 0
             progress = 0
-            total_value = 0
+            status = IndicatorScore.ScoreStatus.POOR
         else:
-            baseline = target_goal.baseline or 0
-            target = target_goal.target or 0
-
-            # Aggregate submission values based on indicator data type
-            total_value = 0
-            for submission in submissions:
-                # Get value based on indicator data type
-                if indicator.data_type == "numeric":
-                    value = submission.value_number or 0
-                elif indicator.data_type == "text":
-                    # For text, we can't aggregate, so skip
-                    continue
-                elif indicator.data_type == "boolean":
-                    # For boolean, count as 1 if true
-                    value = 1 if submission.value_boolean else 0
-                else:
-                    value = submission.value_number or 0
-
-                total_value += value
+            baseline = target_goal.baseline_value or 0
+            target = target_goal.target_value or 0
 
             # Calculate progress based on direction
             if baseline == target:
@@ -105,7 +92,7 @@ def calculate_indicator_score(
                 score = 0
             else:
                 # Direction: "increase" means higher is better, "decrease" means lower is better
-                if indicator.direction == "increase":
+                if target_goal.direction == TargetGoal.Direction.INCREASE:
                     # Progress = (current - baseline) / (target - baseline) * 100
                     if target > baseline:
                         progress = max(0, min(100, ((total_value - baseline) / (target - baseline) * 100)))
@@ -120,13 +107,13 @@ def calculate_indicator_score(
 
             # Determine status
             if progress >= 76:
-                status = IndicatorScore.Status.ACHIEVED
+                status = IndicatorScore.ScoreStatus.ACHIEVED
             elif progress >= 51:
-                status = IndicatorScore.Status.ON_TRACK
+                status = IndicatorScore.ScoreStatus.ON_TRACK
             elif progress >= 26:
-                status = IndicatorScore.Status.AT_RISK
+                status = IndicatorScore.ScoreStatus.AT_RISK
             else:
-                status = IndicatorScore.Status.POOR
+                status = IndicatorScore.ScoreStatus.POOR
 
             score = progress
 
@@ -135,7 +122,7 @@ def calculate_indicator_score(
             indicator=indicator,
             reporting_period=reporting_period,
             score=score,
-            value=total_value if target_goal else None,
+            value=total_value,
             baseline=baseline,
             target=target,
             progress=progress,

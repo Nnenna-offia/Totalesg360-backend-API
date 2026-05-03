@@ -58,7 +58,7 @@ Create `Indicator` entries and optionally map them to organizations/frameworks.
 - `--data-type` (default "numeric"): data type for indicators
 - `--unit` (default "kg"): unit of measurement
 - `--framework-id` / `--framework-code`: optional RegulatoryFramework to map to
-- `--create-mappings`: create `OrganizationIndicator` and `FrameworkIndicator` mappings
+- `--create-mappings`: create `OrganizationIndicator` mappings
 - `--dry-run`: don't write to DB
 - `--fixtures PATH`: write Django JSON fixtures to file
 - `--seed N`: use fixed random seed for reproducibility

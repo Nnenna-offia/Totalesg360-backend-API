@@ -68,11 +68,11 @@ def calculate_pillar_score(
 
             # Count status
             on_track_count = indicator_scores.filter(
-                status__in=[IndicatorScore.Status.ON_TRACK, IndicatorScore.Status.ACHIEVED]
+                status__in=[IndicatorScore.ScoreStatus.ON_TRACK, IndicatorScore.ScoreStatus.ACHIEVED]
             ).count()
 
             at_risk_count = indicator_scores.filter(
-                status__in=[IndicatorScore.Status.AT_RISK, IndicatorScore.Status.POOR]
+                status__in=[IndicatorScore.ScoreStatus.AT_RISK, IndicatorScore.ScoreStatus.POOR]
             ).count()
 
         # Create or update pillar score

@@ -29,8 +29,8 @@ class IndicatorFrameworkMapping(BaseModel):
     
     class MappingType(models.TextChoices):
         PRIMARY = "primary", "Primary"  # Core requirement satisfaction
-        SUPPORTING = "supporting", "Supporting"  # Partial/contributing satisfaction
-        REFERENCE = "reference", "Reference"  # Informational/contextual
+        SECONDARY = "secondary", "Secondary"  # Supports a primary indicator
+        DERIVED = "derived", "Derived"  # Analytic/derived relationship
     
     indicator = models.ForeignKey(
         Indicator,
@@ -57,7 +57,7 @@ class IndicatorFrameworkMapping(BaseModel):
         max_length=20,
         choices=MappingType.choices,
         default=MappingType.PRIMARY,
-        help_text="Type of mapping (primary/supporting/reference)"
+        help_text="Type of mapping (primary/secondary/derived)"
     )
     
     is_primary = models.BooleanField(
@@ -72,7 +72,7 @@ class IndicatorFrameworkMapping(BaseModel):
     )
     
     coverage_percent = models.IntegerField(
-        default=100,
+        default=0,
         help_text="How much of the requirement is covered by this indicator (0-100%)"
     )
     
@@ -108,13 +108,23 @@ class IndicatorFrameworkMapping(BaseModel):
     def __repr__(self):
         return f"<IndicatorFrameworkMapping {self.indicator.code}/{self.requirement.code}>"
     
+    def get_dynamic_coverage_percent(self):
+        """Compute dynamic coverage from IndicatorValue data presence."""
+        from indicators.models import IndicatorValue
+
+        has_values = IndicatorValue.objects.filter(indicator=self.indicator).exists()
+        return 100 if has_values else 0
+
     def get_coverage_status(self):
-        """Status of requirement coverage by this indicator."""
-        if self.coverage_percent >= 100:
+        """Status of requirement coverage by this indicator using dynamic values."""
+        dynamic_coverage = self.get_dynamic_coverage_percent()
+        if dynamic_coverage <= 0:
+            return "not_started"
+        if dynamic_coverage >= 100:
             return "full"
-        elif self.coverage_percent >= 75:
+        elif dynamic_coverage >= 75:
             return "substantial"
-        elif self.coverage_percent >= 50:
+        elif dynamic_coverage >= 50:
             return "partial"
         else:
             return "minimal"

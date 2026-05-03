@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from indicators.models import FrameworkIndicator, Indicator
+from indicators.models import Indicator
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
 from organizations.models import Membership, Organization, OrganizationFramework, RegulatoryFramework
 from roles.models import Capability, Role, RoleCapability
 from submissions.services.core import submit_indicator_value
@@ -29,7 +30,15 @@ class AutoReportingPeriodSubmissionTests(TestCase):
         )
         self.framework = RegulatoryFramework.objects.create(code="AUTO-FW", name="Auto Framework", jurisdiction="INTERNATIONAL")
         OrganizationFramework.objects.create(organization=self.org, framework=self.framework, is_enabled=True)
-        FrameworkIndicator.objects.create(framework=self.framework, indicator=self.indicator, is_required=True, display_order=1)
+        
+        # Create requirement and map indicator to it
+        req = FrameworkRequirement.objects.create(
+            framework=self.framework, code="AUTO-REQ1", title="Auto Requirement", pillar="ENV", is_mandatory=True
+        )
+        IndicatorFrameworkMapping.objects.create(
+            framework=self.framework, requirement=req, indicator=self.indicator,
+            is_active=True, is_primary=True, mapping_type="primary"
+        )
 
     def test_submit_indicator_value_uses_active_reporting_period_when_none_provided(self):
         submission, created = submit_indicator_value(

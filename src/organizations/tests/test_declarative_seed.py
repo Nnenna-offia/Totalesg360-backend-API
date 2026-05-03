@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
-from indicators.models import FrameworkIndicator, Indicator
+from indicators.models import Indicator
 from esg_seed.services.seeder import seed_dataset, seed_framework
 from esg_seed_data import FRAMEWORKS
 from esg_seed_data.gri_305 import GRI_305
@@ -27,13 +27,7 @@ class DeclarativeSeedTests(TestCase):
                 framework=framework,
                 requirement__code="GRI_305_1",
                 indicator__code="SCOPE_1",
-            ).exists()
-        )
-        self.assertTrue(
-            FrameworkIndicator.objects.filter(
-                framework=framework,
-                indicator__code="SCOPE_1",
-                is_required=True,
+                is_active=True,
             ).exists()
         )
 

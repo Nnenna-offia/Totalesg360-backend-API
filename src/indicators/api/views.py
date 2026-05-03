@@ -2,6 +2,8 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework.pagination import PageNumberPagination
 from common.permissions import HasGlobalCapability
+from common.permissions import IsOrgMember
+from common.api import success_response
 
 from indicators.models import Indicator
 from .serializers import IndicatorSerializer
@@ -27,10 +29,19 @@ class IndicatorViewSet(viewsets.ModelViewSet):
 
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from common.api import success_response
 from accounts.selectors.org_context import get_org_and_membership
 from submissions.models import ReportingPeriod
-from indicators.selectors.queries import get_indicator_emission_value
+from indicators.selectors.queries import get_indicator_emission_value, get_active_indicators
+
+
+class OrganizationActiveIndicatorListAPIView(APIView):
+	permission_classes = [IsAuthenticated, IsOrgMember]
+
+	def get(self, request):
+		org, _ = get_org_and_membership(request=request)
+		queryset = get_active_indicators(org).order_by('code')
+		serializer = IndicatorSerializer(queryset, many=True)
+		return success_response(data={'indicators': serializer.data})
 
 
 class EmissionIndicatorValueAPIView(APIView):

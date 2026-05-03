@@ -1,6 +1,7 @@
 from django.test import TestCase
 
-from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from indicators.models import Indicator, OrganizationIndicator
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
 from organizations.models import RegulatoryFramework, Organization, OrganizationFramework
 from indicators.selectors.queries import get_active_indicators, get_framework_indicators, get_org_effective_indicators
 
@@ -17,10 +18,22 @@ class IndicatorSelectorsTest(TestCase):
         self.fw2 = RegulatoryFramework.objects.create(code="FW2", name="Framework 2", jurisdiction="INTERNATIONAL")
 
         # Framework mappings: fw1 requires ind_a, fw1 optional ind_b; fw2 requires ind_b
-        FrameworkIndicator.objects.create(framework=self.fw1, indicator=self.ind_a, is_required=True, display_order=1)
-        FrameworkIndicator.objects.create(framework=self.fw1, indicator=self.ind_b, is_required=False, display_order=2)
-        FrameworkIndicator.objects.create(framework=self.fw2, indicator=self.ind_b, is_required=True, display_order=1)
-        FrameworkIndicator.objects.create(framework=self.fw2, indicator=self.ind_c, is_required=True, display_order=2)
+        fw1_req_required = FrameworkRequirement.objects.create(
+            framework=self.fw1, code="FW1_REQ_A", title="FW1 Required A", pillar="ENV", is_mandatory=True, priority=1
+        )
+        fw1_req_optional = FrameworkRequirement.objects.create(
+            framework=self.fw1, code="FW1_REQ_B", title="FW1 Optional B", pillar="SOC", is_mandatory=False, priority=2
+        )
+        fw2_req_required_b = FrameworkRequirement.objects.create(
+            framework=self.fw2, code="FW2_REQ_B", title="FW2 Required B", pillar="SOC", is_mandatory=True, priority=1
+        )
+        fw2_req_required_c = FrameworkRequirement.objects.create(
+            framework=self.fw2, code="FW2_REQ_C", title="FW2 Required C", pillar="GOV", is_mandatory=True, priority=2
+        )
+        IndicatorFrameworkMapping.objects.create(framework=self.fw1, requirement=fw1_req_required, indicator=self.ind_a, is_active=True, is_primary=True, mapping_type="primary")
+        IndicatorFrameworkMapping.objects.create(framework=self.fw1, requirement=fw1_req_optional, indicator=self.ind_b, is_active=True, is_primary=True, mapping_type="primary")
+        IndicatorFrameworkMapping.objects.create(framework=self.fw2, requirement=fw2_req_required_b, indicator=self.ind_b, is_active=True, is_primary=True, mapping_type="primary")
+        IndicatorFrameworkMapping.objects.create(framework=self.fw2, requirement=fw2_req_required_c, indicator=self.ind_c, is_active=True, is_primary=True, mapping_type="primary")
 
         # Organization
         self.org = Organization.objects.create(name="Org X", sector="manufacturing", country="NG")
@@ -31,8 +44,8 @@ class IndicatorSelectorsTest(TestCase):
 
     def test_get_framework_indicators_ordering(self):
         qs = get_framework_indicators(self.fw1)
-        codes = [fi.indicator.code for fi in qs]
-        self.assertEqual(codes, ["IND_A", "IND_B"])  # display_order 1 then 2
+        codes = [mapping.indicator.code for mapping in qs]
+        self.assertEqual(codes, ["IND_A", "IND_B"])  # requirement priority 1 then 2
 
     def test_get_org_effective_indicators_framework_requirement(self):
         qs = get_org_effective_indicators(self.org).order_by('code')

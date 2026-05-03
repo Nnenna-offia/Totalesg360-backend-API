@@ -1,4 +1,4 @@
-"""Management command: Create Indicator entries and optionally FrameworkIndicator/OrganizationIndicator mappings.
+"""Management command: Create Indicator entries and optionally OrganizationIndicator mappings.
 
 Usage:
   ./manage.py populate_indicators --org-id 1 --count 20 --pillar "Environmental" --framework-id 1 --fixtures tmp/indicators.json
@@ -8,12 +8,12 @@ import json
 from datetime import datetime, timezone
 from django.core.management.base import BaseCommand, CommandError
 from django.core.serializers.json import DjangoJSONEncoder
-from indicators.models import Indicator, FrameworkIndicator, OrganizationIndicator
+from indicators.models import Indicator, OrganizationIndicator
 from organizations.models import Organization, RegulatoryFramework
 
 
 class Command(BaseCommand):
-    help = 'Populate Indicators and optionally FrameworkIndicator/OrganizationIndicator mappings'
+    help = 'Populate Indicators and optionally OrganizationIndicator mappings'
 
     def add_arguments(self, parser):
         parser.add_argument('--org-id', type=str, required=True, help='Organization ID (UUID or name substring match)')
@@ -21,9 +21,9 @@ class Command(BaseCommand):
         parser.add_argument('--pillar', type=str, default='Environmental', help='Pillar name or code (Environmental/Social/Governance)')
         parser.add_argument('--data-type', type=str, default='numeric', help='Data type for indicators')
         parser.add_argument('--unit', type=str, default='kg', help='Unit string for indicators')
-        parser.add_argument('--framework-id', type=int, help='Framework ID to map indicators to')
+        parser.add_argument('--framework-id', type=int, help='Framework ID for context only (no direct mapping created)')
         parser.add_argument('--framework-code', type=str, help='Framework code (GRI/SASB/TCFD)')
-        parser.add_argument('--create-mappings', action='store_true', help='Create OrganizationIndicator/FrameworkIndicator mappings')
+        parser.add_argument('--create-mappings', action='store_true', help='Create OrganizationIndicator mappings')
         parser.add_argument('--dry-run', action='store_true', help='Don\'t write to DB')
         parser.add_argument('--seed', type=int, default=None, help='Random seed for reproducibility')
         parser.add_argument('--fixtures', type=str, help='Path to write Django JSON fixtures')
@@ -157,18 +157,13 @@ class Command(BaseCommand):
                         except Exception as e:
                             self.stdout.write(self.style.WARNING(f"  Failed to create OrganizationIndicator: {e}"))
 
-                    # Create FrameworkIndicator mapping if framework specified
                     if framework:
-                        try:
-                            fw_ind = FrameworkIndicator.objects.create(
-                                framework=framework,
-                                indicator=ind,
-                                is_active=True
+                        self.stdout.write(
+                            self.style.WARNING(
+                                "  Skipping direct framework mapping. "
+                                "Use requirement-based IndicatorFrameworkMapping via ESG seeding services."
                             )
-                            created_mappings += 1
-                            self.stdout.write(f"  Created FrameworkIndicator for {framework.name}")
-                        except Exception as e:
-                            self.stdout.write(self.style.WARNING(f"  Failed to create FrameworkIndicator: {e}"))
+                        )
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Failed to create Indicator: {e}"))

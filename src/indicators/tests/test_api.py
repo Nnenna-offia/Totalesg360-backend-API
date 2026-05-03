@@ -4,6 +4,9 @@ from django.urls import reverse
 
 from accounts.models.user import User
 from indicators.models import Indicator
+from compliance.models import FrameworkRequirement, IndicatorFrameworkMapping
+from organizations.models import Organization, RegulatoryFramework, OrganizationFramework
+from roles.models import Role
 
 
 class IndicatorAPITests(TestCase):
@@ -65,3 +68,31 @@ class IndicatorAPITests(TestCase):
         self.client.force_authenticate(self.admin)
         resp4 = self.client.delete(url)
         assert resp4.status_code == 204
+
+    def test_active_endpoint_returns_only_org_configured_indicators(self):
+        org = Organization.objects.create(name='Org Indicators', sector='manufacturing', country='NG')
+        from organizations.models.membership import Membership
+        role = Role.objects.filter(code='org_owner').first() or Role.objects.create(name='Org Owner', code='org_owner')
+        Membership.objects.create(user=self.user, organization=org, role=role, is_active=True)
+
+        framework = RegulatoryFramework.objects.create(code='IND-FW', name='Indicators FW', jurisdiction='INTERNATIONAL')
+        OrganizationFramework.objects.create(organization=org, framework=framework, is_enabled=True)
+
+        required_indicator = Indicator.objects.create(code='ORG-IND-1', name='Configured', pillar='ENV', data_type=Indicator.DataType.NUMBER)
+        Indicator.objects.create(code='ORG-IND-2', name='Unused', pillar='ENV', data_type=Indicator.DataType.NUMBER)
+        requirement = FrameworkRequirement.objects.create(framework=framework, code='IND-REQ', title='Indicator Req', pillar='ENV', is_mandatory=True)
+        IndicatorFrameworkMapping.objects.create(
+            framework=framework,
+            requirement=requirement,
+            indicator=required_indicator,
+            is_active=True,
+            is_primary=True,
+            mapping_type='primary',
+        )
+
+        self.client.force_authenticate(self.user)
+        resp = self.client.get(reverse('indicator-active'), HTTP_X_ORG_ID=str(org.id))
+
+        self.assertEqual(resp.status_code, 200)
+        codes = {item['code'] for item in resp.data['data']['indicators']}
+        self.assertEqual(codes, {'ORG-IND-1'})

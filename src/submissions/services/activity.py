@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError, PermissionDenied
@@ -9,8 +10,11 @@ from activities.models.activity_type import ActivityType
 from organizations.models.facility import Facility
 from accounts.selectors.org_context import get_user_membership_for_org
 from emissions.services.calculate_emission import calculate_and_store
+from organizations.services.esg_settings import get_or_create_esg_settings
 from submissions.services.reporting_period import get_or_raise_active_reporting_period
-from targets.models import TargetGoal
+
+
+logger = logging.getLogger(__name__)
 
 
 def _user_is_org_member(user, org):
@@ -34,6 +38,18 @@ def submit_activity_value(*, org, user, activity_type_id: str, reporting_period_
             raise ValidationError(detail="ReportingPeriod not found for organization")
     else:
         period = get_or_raise_active_reporting_period(org)
+
+    settings = get_or_create_esg_settings(org)
+    if activity_type.collection_frequency != settings.reporting_frequency:
+        logger.warning(
+            "Activity collection_frequency does not match organization reporting_frequency",
+            extra={
+                "organization_id": str(org.id),
+                "activity_type_id": str(activity_type.id),
+                "activity_collection_frequency": activity_type.collection_frequency,
+                "organization_reporting_frequency": settings.reporting_frequency,
+            },
+        )
 
     if period.status != ReportingPeriod.Status.OPEN:
         raise PermissionDenied(detail="Reporting period is not open for edits")

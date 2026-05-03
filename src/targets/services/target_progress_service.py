@@ -2,10 +2,11 @@ from typing import Dict, Any
 from decimal import Decimal
 
 from targets.selectors.target_selectors import get_indicator_current_value
+from submissions.models import ReportingPeriod
 
 
 def calculate_target_progress(goal) -> Dict[str, Any]:
-    """Compute progress for a TargetGoal using DataSubmission values.
+    """Compute progress for a TargetGoal using IndicatorValue values.
 
     Formula for decrease direction:
       progress = (baseline - current) / (baseline - target)
@@ -13,7 +14,22 @@ def calculate_target_progress(goal) -> Dict[str, Any]:
     For increase direction, invert numerator/denom accordingly.
     Returns percent (0-100) and status (on_track|at_risk|achieved).
     """
-    current = get_indicator_current_value(goal.indicator, goal.organization)
+    active_period = (
+        ReportingPeriod.objects.filter(
+            organization=goal.organization,
+            period_type=goal.reporting_frequency,
+            is_active=True,
+        )
+        .order_by('-start_date', '-created_at')
+        .first()
+    )
+
+    current = get_indicator_current_value(
+        goal.indicator,
+        goal.organization,
+        period=active_period,
+        period_type=goal.reporting_frequency,
+    )
     if current is None:
         return {'progress_percent': 0, 'status': 'pending', 'current_value': None}
 

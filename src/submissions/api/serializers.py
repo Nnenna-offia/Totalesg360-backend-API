@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from submissions.models import DataSubmission, ReportingPeriod
 from indicators.models import Indicator
+from indicators.models.indicator_value import IndicatorValue
 from indicators.selectors.queries import get_org_effective_indicators
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -179,4 +180,32 @@ class ActiveReportingPeriodSerializer(serializers.Serializer):
 		status = serializers.CharField()
 		start_date = serializers.DateField()
 		end_date = serializers.DateField()
+
+
+class IndicatorValuePeriodSerializer(serializers.ModelSerializer):
+	indicator_id = serializers.UUIDField(source="indicator.id", read_only=True)
+	indicator_code = serializers.CharField(source="indicator.code", read_only=True)
+	indicator_name = serializers.CharField(source="indicator.name", read_only=True)
+	pillar = serializers.CharField(source="indicator.pillar", read_only=True)
+	data_type = serializers.CharField(source="indicator.data_type", read_only=True)
+	facility_id = serializers.UUIDField(source="facility.id", allow_null=True, read_only=True)
+	facility_name = serializers.CharField(source="facility.name", allow_null=True, read_only=True)
+
+	class Meta:
+		model = IndicatorValue
+		fields = [
+			"id",
+			"indicator_id",
+			"indicator_code",
+			"indicator_name",
+			"pillar",
+			"data_type",
+			"reporting_period",
+			"facility_id",
+			"facility_name",
+			"value",
+			"metadata",
+			"created_at",
+			"updated_at",
+		]
 

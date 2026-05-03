@@ -1,12 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Count, Q
 
 from common.api import success_response, problem_response
-from common.mixins import OrganizationAccessMixin
-from common.permissions import HasCapability
-from accounts.selectors.org_context import get_org_and_membership
+from common.permissions import HasGlobalCapability, IsOrgMember
 from activities.models.activity_type import ActivityType
 from ..serializers import (
 	ActivityTypeListSerializer, 
@@ -14,9 +12,16 @@ from ..serializers import (
 	ActivityTypeCreateUpdateSerializer
 )
 from django.conf import settings
+from accounts.selectors.org_context import get_org_and_membership
+from indicators.selectors.queries import get_active_indicators
 
-class ActivityTypeListCreateAPIView(OrganizationAccessMixin, APIView):
-	permission_classes = [IsAuthenticated]
+class ActivityTypeListCreateAPIView(APIView):
+	required_capability = 'manage_activity_types'
+
+	def get_permissions(self):
+		if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+			return [AllowAny()]
+		return [IsAuthenticated(), HasGlobalCapability()]
 	
 	def get(self, request):
 		"""
@@ -65,19 +70,6 @@ class ActivityTypeListCreateAPIView(OrganizationAccessMixin, APIView):
 		Create a new activity type.
 		Requires 'manage_activity_types' capability.
 		"""
-		# `OrganizationAccessMixin` ensures `request.organization` exists
-		org, membership = get_org_and_membership(request=request)
-		
-		# Create a temporary view object with required_capability for permission check
-		from types import SimpleNamespace
-		temp_view = SimpleNamespace(required_capability='activity.edit')
-		if not HasCapability().has_permission(request, temp_view):
-			return problem_response({
-				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
-				'title': 'Forbidden',
-				'detail': f"You don't have permission to manage activity types ({temp_view.required_capability})"
-			}, status.HTTP_403_FORBIDDEN)
-		
 		serializer = ActivityTypeCreateUpdateSerializer(data=request.data)
 		serializer.is_valid(raise_exception=True)
 		
@@ -88,7 +80,12 @@ class ActivityTypeListCreateAPIView(OrganizationAccessMixin, APIView):
 
 
 class ActivityTypeDetailAPIView(APIView):
-	permission_classes = [IsAuthenticated]
+	required_capability = 'manage_activity_types'
+
+	def get_permissions(self):
+		if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+			return [AllowAny()]
+		return [IsAuthenticated(), HasGlobalCapability()]
 	
 	def get_object(self, pk):
 		try:
@@ -114,17 +111,6 @@ class ActivityTypeDetailAPIView(APIView):
 		Update an activity type.
 		Requires 'manage_activity_types' capability.
 		"""
-		org, membership = get_org_and_membership(request=request)
-		
-		from types import SimpleNamespace
-		temp_view = SimpleNamespace(required_capability='manage_activity_types')
-		if not HasCapability().has_permission(request, temp_view):
-			return problem_response({
-				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
-				'title': 'Forbidden',
-				'detail': f"You don't have permission to manage activity types ({temp_view.required_capability})"
-			}, status.HTTP_403_FORBIDDEN)
-		
 		activity_type = self.get_object(pk)
 		if not activity_type:
 			return problem_response({
@@ -151,17 +137,6 @@ class ActivityTypeDetailAPIView(APIView):
 		Only allowed if no submissions exist.
 		"""
 		
-		org, membership = get_org_and_membership(request=request)
-		
-		from types import SimpleNamespace
-		temp_view = SimpleNamespace(required_capability='manage_activity_types')
-		if not HasCapability().has_permission(request, temp_view):
-			return problem_response({
-				'type': f"{settings.PROBLEM_BASE_URL}/forbidden",
-				'title': 'Forbidden',
-				'detail': "You don't have permission to manage activity types"
-			}, status.HTTP_403_FORBIDDEN)
-		
 		activity_type = self.get_object(pk)
 		if not activity_type:
 			return problem_response({
@@ -181,3 +156,24 @@ class ActivityTypeDetailAPIView(APIView):
 		
 		activity_type.delete()
 		return success_response(data={"message": "Activity type deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+
+
+class OrgActiveActivityTypesView(APIView):
+	"""
+	Return activity types whose linked indicator is active for the requesting org.
+	Requires X-ORG-ID header (or authenticated user must have a primary org membership).
+	Mirrors GET /api/v1/indicators/active/.
+	"""
+	permission_classes = [IsAuthenticated, IsOrgMember]
+
+	def get(self, request):
+		org, _ = get_org_and_membership(request=request)
+		active_indicators = get_active_indicators(org)
+		queryset = (
+			ActivityType.objects
+			.filter(indicator__in=active_indicators, is_active=True)
+			.select_related('scope', 'indicator')
+			.order_by('indicator__pillar', 'name')
+		)
+		serializer = ActivityTypeListSerializer(queryset, many=True)
+		return success_response(data={'activity_types': serializer.data})

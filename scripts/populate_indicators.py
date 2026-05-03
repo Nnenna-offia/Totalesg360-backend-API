@@ -17,7 +17,7 @@ Parameters (legacy):
 - --pillar: one of ENV, SOC, GOV (default random)
 - --data-type: one of number, percent, boolean, text, currency (default number)
 - --unit: optional unit string
-- --framework-id / --framework-code: optional RegulatoryFramework to map indicators into via FrameworkIndicator
+- --framework-id / --framework-code: optional RegulatoryFramework to reference (no direct mapping; use seeding system for IndicatorFrameworkMapping)
 - --dry-run: don't write to DB, just print
 - --seed: integer seed for reproducible output
 """
@@ -52,7 +52,7 @@ def main():
 
     setup_django()
 
-    from indicators.models.indicator import Indicator, FrameworkIndicator, OrganizationIndicator
+    from indicators.models.indicator import Indicator, OrganizationIndicator
     from organizations.models import Organization
     from organizations.models import RegulatoryFramework
 
@@ -85,10 +85,6 @@ def main():
             continue
 
         ind = Indicator.objects.create(code=code, name=name, pillar=pillar, data_type=data_type, unit=unit)
-
-        # Map to framework if provided
-        if framework:
-            FrameworkIndicator.objects.get_or_create(framework=framework, indicator=ind, defaults={'is_required': False, 'display_order': 100})
 
         # Create organization override/mapping
         OrganizationIndicator.objects.create(organization=org, indicator=ind, is_required=None, is_active=True)
